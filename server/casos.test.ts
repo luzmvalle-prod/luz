@@ -33,7 +33,7 @@ test('seed reproduz os indicadores do protótipo', () => {
   const i = svc.indicadores();
   assert.equal(i.abertos, 3);
   assert.equal(i.acoesSemEvidencia, 2);
-  assert.deepEqual(i.abertosPorEtapa, { classificacao: 1, investigacao: 1, acompanhamento: 1 });
+  assert.deepEqual(i.abertosPorEtapa, { rascunho: 0, classificacao: 1, investigacao: 1, acompanhamento: 1 });
 });
 
 test('nível do caso é o maior entre real e potencial', () => {
@@ -90,7 +90,7 @@ test('fluxo completo: investigação → evidência → conclusão', () => {
   svc.criarAcao(c.id, { titulo: 'Treinar', responsavel: 'Fernanda Alves · Qualidade', prazo: '2026-12-01' }, fernanda);
   r = svc.concluirInvestigacao(
     c.id,
-    { participantes: ['Fernanda Alves · Qualidade'], causaRaiz: 'Distração', certeza: 'Provável', evitabilidade: 'Evitável', responsabilidade: 'Frota' },
+    { participantes: ['Fernanda Alves · Qualidade'], causaRaiz: 'Distração', certeza: 'Provável', evitabilidade: 'Evitável', responsabilidade: 'Nosso condutor' },
     fernanda,
   );
   assert.equal(r.etapa, 'acompanhamento');
@@ -110,6 +110,47 @@ test('fluxo completo: investigação → evidência → conclusão', () => {
   r = svc.reabrir(c.id, 'Novo laudo', fernanda);
   assert.equal(r.etapa, 'investigacao');
   assert.equal(r.historico[0].motivo, 'Novo laudo');
+});
+
+test('dano potencial não pode ser menor que o real', () => {
+  const svc = novo();
+  const c = svc.registrar(registro, [], ana);
+  assert.throws(() => svc.salvarClassificacao(c.id, { real: { ...EMPTY_DANOS, via: 2 }, pot: { ...EMPTY_DANOS, via: 1 }, justificativa: 'x' }, ana), /menor que o dano real/);
+});
+
+test('registro rápido: rascunho só com placa e horário, depois completado', () => {
+  const svc = novo();
+  const base = { propriedade: 'proprio' as const, placa: 'MHL-8D32', dataHora: '2026-09-01T10:00', motorista: '', local: '', tipo: '' };
+  assert.throws(() => svc.registrar(base, [], ana), /Revise/);
+  const r = svc.registrar(base, [], ana, undefined, { rascunho: true });
+  assert.equal(r.etapa, 'rascunho');
+  assert.equal(r.motorista, 'Severino Batista', 'motorista vem da telemetria');
+  assert.ok(r.dados, 'dados congelados já no rascunho');
+  assert.throws(() => svc.registrar({ ...base, motorista: 'X', local: 'Y', tipo: 'Outro' }, [], ana, undefined, { id: r.id }), (e: InstanceType<typeof HttpError>) => !!e.detalhes?.includes('Descreva o tipo de sinistro'));
+  const c = svc.registrar({ ...base, motorista: r.motorista, local: r.local, tipo: 'Outro', tipoOutro: 'Queda de carga' }, [], ana, undefined, { id: r.id });
+  assert.equal(c.etapa, 'classificacao');
+  assert.equal(c.tipoOutro, 'Queda de carga');
+  assert.equal(svc.listar().length, 6, 'completar não cria outro caso');
+});
+
+test('lesão pode ser atualizada mesmo em caso concluído, com motivo', () => {
+  const svc = novo();
+  const sgd = svc.listar().find((c) => c.placa === 'SGD-2B83')!;
+  assert.throws(() => svc.atualizarLesao(sgd.id, 1, 'Óbito', '', fernanda), /motivo/);
+  const r = svc.atualizarLesao(sgd.id, 1, 'Óbito', 'Evoluiu a óbito no hospital', fernanda, '2026-09-28T10:00');
+  assert.equal(r.envolvidos[1].lesao, 'Óbito');
+  assert.match(r.historico[0].evento, /Lesão grave → Óbito \(19 dias após o sinistro\)/);
+});
+
+test('correção de evento: até 7 dias, guarda original e fica pendente de envio à base', () => {
+  const svc = novo();
+  const c = svc.registrar(registro, [], ana, '2026-09-01T10:30');
+  svc.salvarClassificacao(c.id, { real: EMPTY_DANOS, pot: { ...EMPTY_DANOS, pessoas: 3 }, justificativa: 'x' }, ana, true);
+  const ev = svc.obter(c.id).dados!.eventos[0];
+  const alvo = ev.evento === 'Fadiga' ? 'Distração' : 'Fadiga';
+  const r = svc.corrigirEvento(c.id, ev.id, alvo, 'Revisado no vídeo', fernanda, '2026-09-05T09:00');
+  assert.deepEqual([r.correcoes[0].original, r.correcoes[0].corrigido, r.correcoes[0].pendenteBase], [ev.evento, alvo, true]);
+  assert.throws(() => svc.corrigirEvento(c.id, ev.id, 'Cigarro', 'x', fernanda, '2026-09-09T09:00'), /7 dias/);
 });
 
 test('mudança no plano após a investigação exige motivo e vai para o histórico', () => {

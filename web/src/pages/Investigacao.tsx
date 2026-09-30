@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import {
   CERTEZAS,
   EVITABILIDADES,
+  LEGENDAS,
   REGRAS_JORNADA,
   RESPONSABILIDADES,
   TIPOS_HIPOTESE,
   avaliarJornada,
+  eventoCorrigido,
   pendenciasInvestigacao,
   type Acao,
   type Caso,
@@ -15,6 +17,7 @@ import {
 } from '../../../shared/domain.ts';
 import { api } from '../api.ts';
 import { AcaoModal } from '../components/acao.tsx';
+import { EventosTabela, HistoricoMotoristaTabela, VeiculoBloco } from '../components/eventos.tsx';
 import { CasoGate, CasoHeader, useCaso, useMutacao } from '../components/caso.tsx';
 import { AnexoItem, Card, ErrosNote, Field, FileButton, Modal, Seg, useUsuario } from '../components/ui.tsx';
 import { fmtData, fmtDataHora, fmtDuracao } from '../format.ts';
@@ -34,7 +37,8 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
   const { run, ocupado } = useMutacao(setCaso);
   const [inv, setInv] = useState<Investigacao>(caso.investigacao);
   const [sujo, setSujo] = useState(false);
-  const [participante, setParticipante] = useState('');
+  const [partNome, setPartNome] = useState('');
+  const [partSetor, setPartSetor] = useState('');
   const [hipModal, setHipModal] = useState<Hipotese | 'nova' | null>(null);
   const [acaoModal, setAcaoModal] = useState<Acao | 'nova' | null>(null);
   const [tentouConcluir, setTentouConcluir] = useState(false);
@@ -82,13 +86,23 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
 
   const d = caso.dados;
   const toggleEvid = (id: string) => up({ evidencias: inv.evidencias.includes(id) ? inv.evidencias.filter((x) => x !== id) : [...inv.evidencias, id] });
+  // Participantes não precisam de cadastro na plataforma: só nome e setor.
   const addParticipante = () => {
-    const p = participante.trim();
-    if (p && !inv.participantes.includes(p)) up({ participantes: [...inv.participantes, p] });
-    setParticipante('');
+    const nome = partNome.trim();
+    const setor = partSetor.trim();
+    if (!nome) return;
+    const p = setor ? `${nome} · ${setor}` : nome;
+    if (!inv.participantes.includes(p)) up({ participantes: [...inv.participantes, p] });
+    setPartNome('');
+    setPartSetor('');
+  };
+  const onNomeParticipante = (v: string) => {
+    setPartNome(v);
+    const u = usuarios.find((x) => x.nome.toLowerCase() === v.trim().toLowerCase());
+    if (u && !partSetor) setPartSetor(u.setor);
   };
   const sugestoesEvidencia = [
-    ...(d?.eventos.map((e) => `Evento: ${e.evento.toLowerCase()} ${e.horario}`) ?? []),
+    ...(d?.eventos.map((e) => `Evento: ${(eventoCorrigido(caso.correcoes, e.id)?.corrigido ?? e.evento).toLowerCase()} ${e.horario}`) ?? []),
     ...caso.anexos.map((a) => `Anexo: ${a.nome}`),
     'Clipe da câmera externa',
     'Clipe da câmera interna',
@@ -108,23 +122,31 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
                 <input id="comite-data" type="date" className="input" value={inv.comiteData} onChange={(e) => up({ comiteData: e.target.value })} />
               </Field>
               <div className="field span2">
-                <label htmlFor="comite-part">Participantes</label>
+                <span className="label" style={{ fontSize: 12, color: 'var(--muted)' }}>
+                  Participantes (não precisam ter cadastro na plataforma)
+                </span>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <input
-                    id="comite-part"
-                    className="input"
-                    list="usuarios-list"
-                    placeholder="Nome · Setor"
-                    value={participante}
-                    onChange={(e) => setParticipante(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addParticipante())}
-                  />
+                  <label htmlFor="comite-nome" className="sr-only">
+                    Nome do participante
+                  </label>
+                  <input id="comite-nome" className="input" list="usuarios-list" placeholder="Nome" value={partNome} onChange={(e) => onNomeParticipante(e.target.value)} />
                   <datalist id="usuarios-list">
                     {usuarios.map((u) => (
-                      <option key={u.id} value={`${u.nome} · ${u.setor}`} />
+                      <option key={u.id} value={u.nome} />
                     ))}
                   </datalist>
-                  <button className="btn secondary" onClick={addParticipante} disabled={!participante.trim()}>
+                  <label htmlFor="comite-setor" className="sr-only">
+                    Setor do participante
+                  </label>
+                  <input
+                    id="comite-setor"
+                    className="input"
+                    placeholder="Setor"
+                    value={partSetor}
+                    onChange={(e) => setPartSetor(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addParticipante())}
+                  />
+                  <button className="btn secondary" onClick={addParticipante} disabled={!partNome.trim()}>
                     Incluir
                   </button>
                 </div>
@@ -148,56 +170,16 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
               <div className="note">Veículo de terceiro: sem eventos da plataforma. Use os anexos fornecidos pelo proprietário.</div>
             ) : (
               <>
-                <p className="help">Eventos e jornada já registrados pela INFLEET. Marque o que entra como evidência do caso.</p>
-                <table className="table flush">
-                  <thead>
-                    <tr>
-                      <th>Horário</th>
-                      <th>Origem</th>
-                      <th>Evento</th>
-                      <th>Detalhe</th>
-                      <th style={{ width: 110 }} />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {d.eventos.map((e) => (
-                      <tr key={e.id}>
-                        <td className="muted" style={{ whiteSpace: 'nowrap' }}>
-                          {e.horario}
-                        </td>
-                        <td className="muted">{e.origem}</td>
-                        <td style={{ fontWeight: 500 }}>{e.evento}</td>
-                        <td className="muted">{e.detalhe}</td>
-                        <td>
-                          <label className="check">
-                            <input type="checkbox" checked={inv.evidencias.includes(e.id)} onChange={() => toggleEvid(e.id)} />
-                            Evidência
-                          </label>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <p className="help">Eventos da viagem inteira, do início da jornada até o sinistro, já registrados pela INFLEET. Marque o que entra como evidência do caso.</p>
+                <EventosTabela
+                  caso={caso}
+                  selecionados={inv.evidencias}
+                  onToggle={toggleEvid}
+                  onCorrigir={async (eventoId, corrigido, motivo) => !!(await run(() => api.corrigirEvento(caso.id, eventoId, corrigido, motivo), 'Evento corrigido'))}
+                />
                 {d.jornada && <JornadaTabela jornada={d.jornada} />}
-                <div className="stack" style={{ gap: 8 }}>
-                  <h3 style={{ fontSize: 14, fontWeight: 600 }}>Histórico do motorista · 30 dias antes</h3>
-                  <table className="table flush">
-                    <thead>
-                      <tr>
-                        <th>Evento</th>
-                        <th>Ocorrências</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {d.historico30d.map((h) => (
-                        <tr key={h.evento}>
-                          <td>{h.evento}</td>
-                          <td className="muted">{h.ocorrencias}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <HistoricoMotoristaTabela historico={d.historico30d} km30d={d.km30d} />
+                <VeiculoBloco veiculo={d.veiculo} />
               </>
             )}
             <div className="stack" style={{ gap: 8 }}>
@@ -278,24 +260,28 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
             <Field label="Causa raiz" htmlFor="causa">
               <textarea id="causa" className="textarea" rows={2} value={inv.causaRaiz} onChange={(e) => up({ causaRaiz: e.target.value })} />
             </Field>
+            <p className="hint">Passe o mouse sobre cada opção para ver quando usá-la.</p>
             <div className="grid3">
               <div className="field">
                 <span className="label" style={{ fontSize: 12, color: 'var(--muted)' }}>
                   Grau de certeza da causa
                 </span>
-                <Seg label="Grau de certeza" value={inv.certeza} options={CERTEZAS} onChange={(v) => up({ certeza: v })} />
+                <Seg<string> label="Grau de certeza" value={inv.certeza} options={CERTEZAS} dicas={dicas('certeza', CERTEZAS)} onChange={(v) => up({ certeza: v })} />
+                <p className="legenda">{legenda('certeza', inv.certeza)}</p>
               </div>
               <div className="field">
                 <span className="label" style={{ fontSize: 12, color: 'var(--muted)' }}>
                   Evitabilidade
                 </span>
-                <Seg label="Evitabilidade" value={inv.evitabilidade} options={EVITABILIDADES} onChange={(v) => up({ evitabilidade: v })} />
+                <Seg<string> label="Evitabilidade" value={inv.evitabilidade} options={EVITABILIDADES} dicas={dicas('evitabilidade', EVITABILIDADES)} onChange={(v) => up({ evitabilidade: v })} />
+                <p className="legenda">{legenda('evitabilidade', inv.evitabilidade)}</p>
               </div>
               <div className="field">
                 <span className="label" style={{ fontSize: 12, color: 'var(--muted)' }}>
                   Responsabilidade legal
                 </span>
-                <Seg label="Responsabilidade legal" value={inv.responsabilidade} options={RESPONSABILIDADES} onChange={(v) => up({ responsabilidade: v })} />
+                <Seg<string> label="Responsabilidade legal" value={inv.responsabilidade} options={RESPONSABILIDADES} dicas={dicas('responsabilidade', RESPONSABILIDADES)} onChange={(v) => up({ responsabilidade: v })} />
+                <p className="legenda">{legenda('responsabilidade', inv.responsabilidade)}</p>
               </div>
             </div>
           </Card>
@@ -424,9 +410,18 @@ export function JornadaTabela({ jornada }: { jornada: NonNullable<Caso['dados']>
           </tr>
         </tbody>
       </table>
-      <p className="hint">Regras da Lei 13.103/2015 para transporte de cargas, configuráveis por cliente e convenção coletiva.</p>
+      <p className="hint">Regras da Lei 13.103/2015 (Lei do Motorista) para transporte de cargas.</p>
     </div>
   );
+}
+
+/** Legenda da opção escolhida (textos em LEGENDAS, a validar com a metodologia). */
+function legenda(grupo: string, v: string) {
+  if (!v) return 'Escolha uma opção.';
+  return LEGENDAS[v === 'Inconclusiva' ? `Inconclusiva (${grupo})` : v] ?? '';
+}
+function dicas<T extends string>(grupo: string, opcoes: readonly T[]) {
+  return Object.fromEntries(opcoes.map((o) => [o, legenda(grupo, o)])) as Partial<Record<T, string>>;
 }
 
 function HipoteseModal({ hip, sugestoes, onClose, onSave }: { hip?: Hipotese; sugestoes: string[]; onClose: () => void; onSave: (h: Hipotese) => void }) {

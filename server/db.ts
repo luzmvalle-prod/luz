@@ -88,7 +88,17 @@ export function openDb(file = DB_FILE): DatabaseSync {
   const db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
   db.exec(SCHEMA);
+  migrar(db);
   return db;
+}
+
+/** Ajustes em bancos criados por versões anteriores. */
+function migrar(db: DatabaseSync) {
+  const cols = new Set((db.prepare('PRAGMA table_info(casos)').all() as { name: string }[]).map((c) => c.name));
+  if (!cols.has('tipo_outro')) db.exec("ALTER TABLE casos ADD COLUMN tipo_outro TEXT NOT NULL DEFAULT ''");
+  if (!cols.has('correcoes')) db.exec("ALTER TABLE casos ADD COLUMN correcoes TEXT NOT NULL DEFAULT '[]'");
+  // "Frota" passou a se chamar "Nosso condutor" em responsabilidade legal.
+  db.exec(`UPDATE casos SET investigacao = replace(investigacao, '"responsabilidade":"Frota"', '"responsabilidade":"Nosso condutor"')`);
 }
 
 export function tx<T>(db: DatabaseSync, fn: () => T): T {

@@ -14,7 +14,7 @@ export const diasEntre = (a: string, b: string) => Math.max(0, Math.round((Date.
 
 /** Tela de trabalho para a etapa atual do caso. */
 export function rotaDaEtapa(id: string, etapa: Etapa) {
-  const seg = { classificacao: 'classificacao', investigacao: 'investigacao', acompanhamento: 'acompanhamento', concluido: 'conclusao', concluido_sem_investigacao: 'conclusao' }[etapa];
+  const seg = { rascunho: 'registro', classificacao: 'classificacao', investigacao: 'investigacao', acompanhamento: 'acompanhamento', concluido: 'conclusao', concluido_sem_investigacao: 'conclusao' }[etapa];
   return `/sinistros/${id}/${seg}`;
 }
 

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { CONDICOES_VIA, LESOES, PAPEIS_ENVOLVIDO, TIPOS_SINISTRO, type Envolvido, type Propriedade } from '../../../shared/domain.ts';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { CONDICOES_VIA, LESOES, PAPEIS_ENVOLVIDO, TIPOS_SINISTRO, type Anexo, type Envolvido, type Propriedade } from '../../../shared/domain.ts';
 import { ApiError, api } from '../api.ts';
-import { Card, ErrosNote, Field, FileButton, Modal, PageHeader, Seg, Shell, Stepper, useToast } from '../components/ui.tsx';
-import { fmtBytes } from '../format.ts';
+import { AnexoItem, Card, ErrosNote, Field, FileButton, Loading, Modal, PageHeader, Seg, Shell, Stepper, useToast } from '../components/ui.tsx';
+import { fmtBytes, fmtDataHora, rotaDaEtapa } from '../format.ts';
 
 type Veiculo = { placa: string; modelo: string; unidade: string; motorista: string };
 
@@ -13,8 +13,14 @@ function agoraLocal() {
   return d.toISOString().slice(0, 16);
 }
 
+/** Registro de um sinistro novo (/sinistros/novo) ou continuação de um rascunho (/sinistros/:id/registro). */
 export function Registro() {
   const nav = useNavigate();
+  const { id } = useParams();
+  const [carregado, setCarregado] = useState(!id);
+  const [anexosSalvos, setAnexosSalvos] = useState<Anexo[]>([]);
+  const [rascunhoEm, setRascunhoEm] = useState<string | null>(null);
+  const [tipoOutro, setTipoOutro] = useState('');
   const toast = useToast();
   const [frota, setFrota] = useState<Veiculo[]>([]);
   const [prop, setProp] = useState<Propriedade>('proprio');
@@ -42,6 +48,44 @@ export function Registro() {
     api.frota().then(setFrota, () => {});
   }, []);
 
+  // Continuação de um rascunho: carrega o que já foi salvo.
+  useEffect(() => {
+    if (!id) return;
+    api.caso(id).then(
+      (c) => {
+        if (c.etapa !== 'rascunho') return nav(rotaDaEtapa(c.id, c.etapa), { replace: true });
+        setProp(c.propriedade);
+        setPlaca(c.placa);
+        setDataHora(c.dataHora);
+        setMotorista(c.motorista);
+        setLocal(c.local);
+        editado.current = { motorista: !!c.motorista, local: !!c.local };
+        setTipo(c.tipo);
+        setTipoOutro(c.tipoOutro);
+        setCondicaoVia(c.condicaoVia);
+        setRelato(c.relato);
+        if (c.terceiro) {
+          setProprietario(c.terceiro.proprietario);
+          setDocumento(c.terceiro.documento);
+          setCnh(c.terceiro.cnh);
+          setModelo(c.modelo === 'Veículo de terceiro' ? '' : c.modelo);
+        }
+        const [mot, ...resto] = c.envolvidos;
+        if (mot?.papel === 'Motorista do veículo') {
+          setLesaoMotorista(mot.lesao);
+          setOutros(resto);
+        } else setOutros(c.envolvidos);
+        setAnexosSalvos(c.anexos);
+        setRascunhoEm(c.registradoEm);
+        setCarregado(true);
+      },
+      (e) => {
+        toast(e.message, 'erro');
+        nav('/sinistros');
+      },
+    );
+  }, [id, nav, toast]);
+
   const veiculo = useMemo(() => frota.find((v) => v.placa === placa.trim().toUpperCase()), [frota, placa]);
 
   // Veículo próprio: motorista e local vêm da telemetria no horário informado.
@@ -67,7 +111,7 @@ export function Registro() {
     ...outros,
   ];
 
-  async function registrar() {
+  async function registrar(rascunho = false) {
     setErros([]);
     setEnviando(true);
     const dados = {
@@ -77,6 +121,7 @@ export function Registro() {
       motorista,
       local,
       tipo,
+      tipoOutro: tipo === 'Outro' ? tipoOutro : '',
       condicaoVia,
       relato,
       envolvidos,
@@ -84,9 +129,17 @@ export function Registro() {
     };
     const fd = new FormData();
     fd.append('dados', JSON.stringify(dados));
+    if (rascunho) fd.append('rascunho', '1');
     arquivos.forEach((f) => fd.append('anexos', f));
     try {
-      const c = await api.registrar(fd);
+      const c = id ? await api.salvarRegistro(id, fd) : await api.registrar(fd);
+      setArquivos([]);
+      if (rascunho) {
+        toast(`Rascunho ${c.id} salvo. Complete o registro quando tiver as informações.`);
+        if (!id) nav(`/sinistros/${c.id}/registro`, { replace: true });
+        else setAnexosSalvos(c.anexos);
+        return;
+      }
       toast(`Caso ${c.id} registrado`);
       nav(`/sinistros/${c.id}/classificacao`);
     } catch (e) {
@@ -106,6 +159,11 @@ export function Registro() {
       ))}
     </select>
   );
+  const tipoOutroField = tipo === 'Outro' && (
+    <Field label="Descreva o tipo" htmlFor="tipo-outro">
+      <input id="tipo-outro" className="input" autoFocus placeholder="Ex.: queda de carga" value={tipoOutro} onChange={(e) => setTipoOutro(e.target.value)} />
+    </Field>
+  );
   const viaSelect = (
     <select id="via" className="select" value={condicaoVia} onChange={(e) => setCondicaoVia(e.target.value)}>
       {CONDICOES_VIA.map((t) => (
@@ -114,9 +172,21 @@ export function Registro() {
     </select>
   );
 
+  if (!carregado)
+    return (
+      <Shell>
+        <Loading />
+      </Shell>
+    );
+
   return (
     <Shell>
-      <PageHeader crumbs={<><Link to="/sinistros">Sinistros</Link> / Novo</>} eyebrow="Etapa 1 de 5" title="Registro do sinistro">
+      <PageHeader
+        crumbs={<><Link to="/sinistros">Sinistros</Link> / {id ? `${placa} · ${id}` : 'Novo'}</>}
+        eyebrow="Etapa 1 de 5"
+        title="Registro do sinistro"
+        subtitle={rascunhoEm ? `Rascunho iniciado em ${fmtDataHora(rascunhoEm)}. Complete os dados para seguir para a classificação.` : undefined}
+      >
         <Stepper atual={0} />
       </PageHeader>
 
@@ -183,6 +253,7 @@ export function Registro() {
                   <Field label="Tipo" htmlFor="tipo">
                     {tipoSelect}
                   </Field>
+                  {tipoOutroField}
                   <Field label="Condição da via" htmlFor="via">
                     {viaSelect}
                   </Field>
@@ -225,6 +296,7 @@ export function Registro() {
                   <Field label="Tipo" htmlFor="tipo">
                     {tipoSelect}
                   </Field>
+                  {tipoOutroField}
                   <Field label="Modelo do veículo" htmlFor="t-modelo">
                     <input id="t-modelo" className="input" placeholder="Opcional" value={modelo} onChange={(e) => setModelo(e.target.value)} />
                   </Field>
@@ -291,6 +363,9 @@ export function Registro() {
               <span className="label" style={{ fontSize: 12, color: 'var(--muted)' }}>
                 Anexos
               </span>
+              {anexosSalvos.map((a) => (
+                <AnexoItem key={a.id} a={a} />
+              ))}
               {arquivos.map((f, i) => (
                 <div className="file" key={i}>
                   <span>{f.name}</span>
@@ -312,6 +387,9 @@ export function Registro() {
         </div>
 
         <aside className="aside">
+          <Card title="Registro rápido">
+            <p className="help">Recebeu a ligação agora? Informe só a placa e o horário e salve como rascunho. Os dados da plataforma já são puxados e você completa o resto depois.</p>
+          </Card>
           <Card title="Ao registrar">
             <ul className="help" style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 8 }}>
               <li>O caso é criado e aparece na lista.</li>
@@ -327,12 +405,15 @@ export function Registro() {
       </div>
 
       <div className="footer-bar">
-        <span className="msg">Campos obrigatórios: placa, data e hora, motorista, local e tipo.</span>
+        <span className="msg">Para registrar: placa, data e hora, motorista, local e tipo. Para o rascunho, basta placa e horário.</span>
         <div className="actions">
           <Link className="btn outline" to="/sinistros">
             Cancelar
           </Link>
-          <button className="btn" onClick={registrar} disabled={enviando}>
+          <button className="btn outline" onClick={() => registrar(true)} disabled={enviando}>
+            Salvar rascunho
+          </button>
+          <button className="btn" onClick={() => registrar()} disabled={enviando}>
             {enviando ? 'Registrando…' : 'Registrar e classificar'}
           </button>
         </div>

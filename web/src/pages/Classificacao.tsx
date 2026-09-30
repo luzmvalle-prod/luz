@@ -53,7 +53,13 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
     return () => clearTimeout(t);
   }, [cls, caso.id]);
 
-  const set = (kind: 'real' | 'pot', key: keyof Danos, v: Nivel) => setCls({ ...cls, [kind]: { ...cls[kind], [key]: v } });
+  // O potencial nunca fica abaixo do real: ao subir o real, o potencial acompanha.
+  const set = (kind: 'real' | 'pot', key: keyof Danos, v: Nivel) =>
+    setCls(
+      kind === 'real'
+        ? { ...cls, real: { ...cls.real, [key]: v }, pot: { ...cls.pot, [key]: Math.max(cls.pot[key], v) as Nivel } }
+        : { ...cls, pot: { ...cls.pot, [key]: Math.max(v, cls.real[key]) as Nivel } },
+    );
   const r = maxNivel(cls.real);
   const p = maxNivel(cls.pot);
   const n = nivelDoCaso(cls);
@@ -86,14 +92,21 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
                 <Linha key={d.key} label={d.label}>
                   {(['real', 'pot'] as const).map((k) => (
                     <div key={k} className="stack" style={{ gap: 6 }}>
-                      <Seg label={`${d.label} · ${k === 'real' ? 'dano real' : 'dano potencial'}`} value={String(cls[k][d.key]) as `${number}`} options={opts} onChange={(v) => set(k, d.key, Number(v) as Nivel)} />
+                      <Seg
+                        label={`${d.label} · ${k === 'real' ? 'dano real' : 'dano potencial'}`}
+                        value={String(cls[k][d.key]) as `${number}`}
+                        options={opts}
+                        bloqueadas={k === 'pot' ? opts.filter((o) => Number(o.value) < cls.real[d.key]).map((o) => o.value) : undefined}
+                        dicas={Object.fromEntries(opts.map((o) => [o.value, CRITERIOS[d.key][Number(o.value)]]))}
+                        onChange={(v) => set(k, d.key, Number(v) as Nivel)}
+                      />
                       <span className="hint">{CRITERIOS[d.key][cls[k][d.key]]}</span>
                     </div>
                   ))}
                 </Linha>
               ))}
             </div>
-            <p className="hint">Critérios de cada nível configurados pelo cliente.</p>
+            <p className="hint">O dano potencial nunca é menor que o real: ao subir o real, o potencial acompanha. Critérios de cada nível configurados pelo cliente.</p>
             <Field label="Justificativa do potencial" htmlFor="just">
               <textarea
                 id="just"

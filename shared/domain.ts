@@ -54,10 +54,47 @@ export const TIPOS_HIPOTESE = [
 
 export const CERTEZAS = ['Confirmada', 'Provável', 'Inconclusiva'] as const;
 export const EVITABILIDADES = ['Evitável', 'Não evitável', 'Inconclusiva'] as const;
-export const RESPONSABILIDADES = ['Frota', 'Terceiro', 'Compartilhada', 'Indeterminada'] as const;
+export const RESPONSABILIDADES = ['Nosso condutor', 'Terceiro', 'Compartilhada', 'Indeterminada'] as const;
 
-export type Etapa = 'classificacao' | 'investigacao' | 'acompanhamento' | 'concluido' | 'concluido_sem_investigacao';
+/** Legendas de apoio à conclusão (texto inicial, a validar com a metodologia INFLEET). */
+export const LEGENDAS: Record<string, string> = {
+  Confirmada: 'Há evidências materiais que comprovam a causa (vídeo, laudo, telemetria). Sem elas, use Provável.',
+  Provável: 'As evidências apontam para a causa, mas não a comprovam por completo.',
+  'Inconclusiva (certeza)': 'As evidências não permitem apontar a causa com segurança.',
+  Evitável: 'Com as atitudes corretas naquele contexto, o acidente não teria acontecido. Ex.: avançar o sinal vermelho.',
+  'Não evitável': 'Nenhuma atitude razoável do nosso condutor evitaria o acidente. Ex.: carro que cruza a pista sem sinalizar, sem tempo de frenagem.',
+  'Inconclusiva (evitabilidade)': 'Não há elementos suficientes para dizer se o acidente era evitável.',
+  'Nosso condutor': 'O acidente foi causado pelo condutor do veículo da frota.',
+  Terceiro: 'O acidente foi causado por outra pessoa ou outro veículo.',
+  Compartilhada: 'Nosso condutor e o terceiro contribuíram para o acidente.',
+  Indeterminada: 'Ainda não é possível atribuir a responsabilidade.',
+};
+
+/** Tipos de evento para reclassificação de um evento da plataforma. */
+export const TIPOS_EVENTO = [
+  'Uso de celular',
+  'Fadiga',
+  'Distração',
+  'Cigarro',
+  'Excesso de velocidade',
+  'Frenagem brusca',
+  'Manobra brusca',
+  'Distância insegura',
+  'Risco de colisão',
+  'Capotamento',
+  'Câmera obstruída',
+  'Falso positivo',
+] as const;
+
+/** Prazo para corrigir a natureza de um evento, contado da data do sinistro. */
+export const PRAZO_CORRECAO_DIAS = 7;
+
+/** Nível mínimo de dano real a pessoas indicado pela lesão mais grave registrada. */
+export const LESAO_NIVEL_MIN: Record<string, Nivel> = { 'Sem lesão': 0, 'Lesão leve': 0, 'Lesão grave': 2, Óbito: 3 };
+
+export type Etapa = 'rascunho' | 'classificacao' | 'investigacao' | 'acompanhamento' | 'concluido' | 'concluido_sem_investigacao';
 export const ETAPA_LABEL: Record<Etapa, string> = {
+  rascunho: 'Registro',
   classificacao: 'Classificação',
   investigacao: 'Investigação',
   acompanhamento: 'Acompanhamento',
@@ -66,6 +103,7 @@ export const ETAPA_LABEL: Record<Etapa, string> = {
 };
 /** Índice no stepper de 5 etapas (0 = Registro). */
 export const ETAPA_INDEX: Record<Etapa, number> = {
+  rascunho: 0,
   classificacao: 1,
   investigacao: 2,
   acompanhamento: 3,
@@ -138,6 +176,28 @@ export interface EventoPlataforma {
   origem: 'Telemetria' | 'Videotelemetria';
   evento: string;
   detalhe: string;
+  velocidade?: number | null; // km/h no momento do evento
+}
+export interface CorrecaoEvento {
+  eventoId: string;
+  original: string;
+  corrigido: string;
+  motivo: string;
+  autor: string;
+  data: string;
+  /** Ainda não levada à base de eventos (depende da integração com o saneamento de eventos). */
+  pendenteBase: boolean;
+}
+export interface HistoricoMotorista {
+  evento: string;
+  ocorrencias: number;
+  por1000km?: number;
+  mediaFrota?: number; // por 1.000 km
+  percentil?: number; // 0–100, maior = pior que mais motoristas da frota
+}
+export interface VeiculoNoSinistro {
+  checklist: { data: string; resultado: string; naoConformidades: string[] } | null;
+  manutencoesVencidas: { item: string; venceuEm: string }[];
 }
 export interface Jornada {
   inicio: string; // HH:mm
@@ -151,7 +211,9 @@ export interface DadosColetados {
   grupos: GrupoColetado[];
   eventos: EventoPlataforma[];
   jornada: Jornada | null;
-  historico30d: { evento: string; ocorrencias: number }[];
+  historico30d: HistoricoMotorista[];
+  km30d?: number;
+  veiculo?: VeiculoNoSinistro;
   observacoes: string[];
 }
 
@@ -207,6 +269,7 @@ export interface Caso {
   dataHora: string; // YYYY-MM-DDTHH:mm (horário local)
   local: string;
   tipo: string;
+  tipoOutro: string;
   condicaoVia: string;
   relato: string;
   envolvidos: Envolvido[];
@@ -215,6 +278,7 @@ export interface Caso {
   classificacao: Classificacao;
   investigacao: Investigacao;
   dados: DadosColetados | null;
+  correcoes: CorrecaoEvento[];
   registradoPor: string;
   registradoEm: string;
   concluidoPor: string | null;
@@ -227,14 +291,14 @@ export interface Caso {
 
 export type CasoResumo = Pick<
   Caso,
-  'id' | 'placa' | 'modelo' | 'unidade' | 'motorista' | 'dataHora' | 'tipo' | 'nivel' | 'etapa' | 'proximoPasso' | 'propriedade'
+  'id' | 'placa' | 'modelo' | 'unidade' | 'motorista' | 'dataHora' | 'tipo' | 'tipoOutro' | 'nivel' | 'etapa' | 'proximoPasso' | 'propriedade'
 >;
 
 export interface Indicadores {
   sinistros30d: number;
   graves30d: number;
   abertos: number;
-  abertosPorEtapa: Record<'classificacao' | 'investigacao' | 'acompanhamento', number>;
+  abertosPorEtapa: Record<'rascunho' | 'classificacao' | 'investigacao' | 'acompanhamento', number>;
   acoesSemEvidencia: number;
   diasSemGravissimo: number | null;
   ultimoGravissimo: string | null;
@@ -257,7 +321,7 @@ export function origemDoNivel(c: Pick<Classificacao, 'real' | 'pot'>): string {
   return r > p ? 'real' : 'potencial';
 }
 
-/** Regras da Lei 13.103/2015 (transporte de cargas). Configuráveis por cliente e convenção coletiva. */
+/** Regras da Lei 13.103/2015 (Lei do Motorista) para transporte de cargas. Fixas: seguem a lei. */
 export const REGRAS_JORNADA = {
   jornadaMin: 8 * 60,
   extrasMin: 2 * 60,
@@ -305,6 +369,8 @@ export function pendenciasInvestigacao(inv: Investigacao, acoes: Pick<Acao, 'tit
 
 export function proximoPasso(etapa: Etapa, acoes: Pick<Acao, 'status' | 'evidencia'>[]): string {
   switch (etapa) {
+    case 'rascunho':
+      return 'Completar registro';
     case 'classificacao':
       return 'Classificar';
     case 'investigacao':
@@ -320,3 +386,19 @@ export function proximoPasso(etapa: Etapa, acoes: Pick<Acao, 'status' | 'evidenc
       return '—';
   }
 }
+
+export const tipoLabel = (c: Pick<Caso, 'tipo' | 'tipoOutro'>) => (c.tipo === 'Outro' && c.tipoOutro ? `Outro · ${c.tipoOutro}` : c.tipo || '—');
+
+/** Nome atual do evento, considerando a correção mais recente. */
+export function eventoCorrigido(correcoes: CorrecaoEvento[] | undefined, eventoId: string): CorrecaoEvento | undefined {
+  return (correcoes ?? []).filter((c) => c.eventoId === eventoId).at(-1);
+}
+
+/** Dias corridos entre duas datas ISO (YYYY-MM-DD...). */
+export const diasDesde = (inicio: string, fim: string) => Math.floor((Date.parse(fim.slice(0, 10)) - Date.parse(inicio.slice(0, 10))) / 86400000);
+
+export const podeCorrigirEvento = (dataHoraSinistro: string, hoje: string) => diasDesde(dataHoraSinistro, hoje) <= PRAZO_CORRECAO_DIAS;
+
+/** Maior nível de dano a pessoas indicado pelas lesões dos envolvidos. */
+export const nivelPelasLesoes = (envolvidos: Pick<Envolvido, 'lesao'>[]): Nivel =>
+  Math.max(0, ...envolvidos.map((e) => LESAO_NIVEL_MIN[e.lesao] ?? 0)) as Nivel;

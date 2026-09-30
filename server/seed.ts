@@ -184,11 +184,11 @@ export function seed(db: DatabaseSync) {
     {
       comiteData: '2026-09-23',
       participantes: ['Fernanda Alves · Qualidade', 'Diego Nunes · Manutenção', 'Rafaela Costa · Sinistro'],
-      evidencias: ['ev-cam', 'ev1', 'ev2', 'ev3', 'ev-imp'],
+      evidencias: ['ev-cam', 'ev1', 'ev2', 'ev3'],
       constatado: 'Freio aprovado em teste. Na câmera externa, os veículos à frente reduzem e o nosso segue sem reduzir.',
       hipoteses: [
         { id: 'h1', tipo: 'Hipótese descartada', descricao: 'Falha mecânica no freio', evidencia: 'Laudo do teste de freio' },
-        { id: 'h2', tipo: 'Fator · humano', descricao: 'Provável distração, não confirmada', evidencia: 'Evento: sem frenagem com veículo à frente' },
+        { id: 'h2', tipo: 'Fator · humano', descricao: 'Provável distração, não confirmada', evidencia: 'Evento: risco de colisão 07:41:58' },
         { id: 'h3', tipo: 'Fator · humano', descricao: 'Excesso de velocidade 6 min antes', evidencia: 'Evento de telemetria 07:36' },
         { id: 'h4', tipo: 'Fator · ambiente', descricao: 'Pista molhada após chuva', evidencia: 'Clipe da câmera externa' },
         { id: 'h5', tipo: 'Fator · organização', descricao: 'Câmera interna obstruída sem alerta prévio', evidencia: 'Status da câmera' },
@@ -197,7 +197,7 @@ export function seed(db: DatabaseSync) {
       causaRaiz: 'Provável distração do motorista.',
       certeza: 'Inconclusiva',
       evitabilidade: 'Evitável',
-      responsabilidade: 'Frota',
+      responsabilidade: 'Nosso condutor',
     },
     fernanda,
     '2026-09-23T16:02',

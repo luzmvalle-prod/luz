@@ -35,16 +35,24 @@ export function criarApp(db: DatabaseSync, opts: { estatico?: string } = {}) {
   r.get('/casos', (_q, s) => s.json(svc.listar()));
   r.get('/casos/:id', (q, s) => s.json(svc.obter(q.params.id)));
 
-  r.post('/casos', upload.array('anexos'), (q, s) => {
-    let dados: RegistroInput;
+  const lerRegistro = (q: Request) => {
     try {
-      dados = JSON.parse(String(q.body.dados ?? '{}'));
+      return JSON.parse(String(q.body.dados ?? '{}')) as RegistroInput;
     } catch {
       throw new HttpError(400, 'Dados do registro inválidos');
     }
+  };
+  // rascunho=1 salva o registro rápido (só placa e horário obrigatórios).
+  r.post('/casos', upload.array('anexos'), (q, s) => {
     const files = ((q.files as Express.Multer.File[]) ?? []).map(nomeArquivo);
-    s.status(201).json(svc.registrar(dados, files, user(q)));
+    s.status(201).json(svc.registrar(lerRegistro(q), files, user(q), undefined, { rascunho: q.body.rascunho === '1' }));
   });
+  r.put('/casos/:id/registro', upload.array('anexos'), (q, s) => {
+    const files = ((q.files as Express.Multer.File[]) ?? []).map(nomeArquivo);
+    s.json(svc.registrar(lerRegistro(q), files, user(q), undefined, { rascunho: q.body.rascunho === '1', id: q.params.id }));
+  });
+  r.patch('/casos/:id/envolvidos/:indice', (q, s) => s.json(svc.atualizarLesao(q.params.id, Number(q.params.indice), q.body.lesao, q.body.motivo, user(q))));
+  r.post('/casos/:id/eventos/:eventoId/correcao', (q, s) => s.json(svc.corrigirEvento(q.params.id, q.params.eventoId, q.body.corrigido, q.body.motivo, user(q))));
   r.patch('/casos/:id/identificacao', (q, s) => s.json(svc.editarIdentificacao(q.params.id, q.body.patch ?? {}, q.body.motivo, user(q))));
   r.post('/casos/:id/envolvidos', (q, s) => s.json(svc.adicionarEnvolvido(q.params.id, q.body, user(q))));
   r.post('/casos/:id/anexos', upload.array('anexos'), (q, s) => {

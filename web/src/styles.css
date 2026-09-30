@@ -90,6 +90,11 @@ h1, h2, h3 { margin: 0; }
 .kpi .k { font-size: 13px; color: var(--muted); }
 .kpi .v { font-size: 32px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; }
 .kpi .s { font-size: 12px; color: var(--faint); }
+/* Indicador de referência ("dias sem acidente"): destacado dos demais. */
+.kpi.destaque { flex: 1.3; background: var(--navy); border-color: var(--navy); }
+.kpi.destaque .k { color: #bcd0ee; }
+.kpi.destaque .v { color: #fff; font-size: 40px; }
+.kpi.destaque .s { color: #9fb6da; }
 
 .note { padding: 12px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); font-size: 14px; }
 .note.warn { background: var(--warn-soft); border-color: #f3dc9a; }
@@ -116,6 +121,7 @@ h1, h2, h3 { margin: 0; }
 .seg button { flex: 1; height: 32px; padding: 0 8px; border-radius: 6px; border: 0; background: transparent; color: var(--ink-2); font-size: 12px; }
 .seg button[aria-checked='true'] { background: var(--navy); color: #fff; font-weight: 500; }
 .seg button:disabled { opacity: 1; cursor: default; }
+.seg button:disabled:not([aria-checked='true']) { color: var(--line-strong); cursor: not-allowed; }
 
 /* ---------- buttons */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 40px; padding: 0 16px; border-radius: 8px; border: 0; font-size: 14px; font-weight: 500; background: var(--blue); color: #fff; white-space: nowrap; }
@@ -218,3 +224,6 @@ h1, h2, h3 { margin: 0; }
   .report { padding: 0; max-width: none; }
   .report section { break-inside: avoid; }
 }
+
+.video-ph { height: 200px; border-radius: 12px; background: #0b1b33; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-size: 14px; }
+.legenda { margin: 0; font-size: 12px; color: var(--muted); min-height: 32px; }

@@ -27,6 +27,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="/sinistros" element={<Lista />} />
             <Route path="/sinistros/novo" element={<Registro />} />
             <Route path="/sinistros/:id" element={<AbrirCaso />} />
+            <Route path="/sinistros/:id/registro" element={<Registro />} />
             <Route path="/sinistros/:id/classificacao" element={<ClassificacaoPage />} />
             <Route path="/sinistros/:id/investigacao" element={<InvestigacaoPage />} />
             <Route path="/sinistros/:id/acompanhamento" element={<Acompanhamento />} />

@@ -9,6 +9,13 @@ import {
   EMPTY_DANOS,
   EMPTY_INVESTIGACAO,
   EVITABILIDADES,
+  LESOES,
+  PRAZO_CORRECAO_DIAS,
+  TIPOS_EVENTO,
+  diasDesde,
+  eventoCorrigido,
+  podeCorrigirEvento,
+  tipoLabel,
   NIVEIS,
   RESPONSABILIDADES,
   exigeInvestigacao,
@@ -22,7 +29,9 @@ import {
   type Caso,
   type CasoResumo,
   type Classificacao,
+  type CorrecaoEvento,
   type Danos,
+  type DadosColetados,
   type DadosTerceiro,
   type Envolvido,
   type Etapa,
@@ -35,7 +44,7 @@ import {
   type Usuario,
 } from '../shared/domain.ts';
 import { UPLOAD_DIR, agora, hoje, tx } from './db.ts';
-import { coletarDados, veiculo } from './plataforma.ts';
+import { coletarDados, consultarPosicao, veiculo } from './plataforma.ts';
 
 export class HttpError extends Error {
   constructor(
@@ -126,6 +135,7 @@ export class Casos {
       dataHora: String(r.data_hora),
       local: String(r.local),
       tipo: String(r.tipo),
+      tipoOutro: String(r.tipo_outro ?? ''),
       condicaoVia: String(r.condicao_via),
       relato: String(r.relato),
       envolvidos: J<Envolvido[]>(r.envolvidos),
@@ -134,6 +144,7 @@ export class Casos {
       classificacao: J<Classificacao>(r.classificacao),
       investigacao: { ...EMPTY_INVESTIGACAO, ...J<Investigacao>(r.investigacao) },
       dados: r.dados ? J(r.dados) : null,
+      correcoes: J<CorrecaoEvento[]>(r.correcoes ?? '[]'),
       registradoPor: String(r.registrado_por),
       registradoEm: String(r.registrado_em),
       concluidoPor: s(r.concluido_por),
@@ -146,7 +157,7 @@ export class Casos {
   }
 
   listar(): CasoResumo[] {
-    const rows = this.db.prepare('SELECT id, placa, modelo, unidade, motorista, data_hora, tipo, nivel, etapa, propriedade FROM casos ORDER BY data_hora DESC').all() as Row[];
+    const rows = this.db.prepare('SELECT id, placa, modelo, unidade, motorista, data_hora, tipo, tipo_outro, nivel, etapa, propriedade FROM casos ORDER BY data_hora DESC').all() as Row[];
     return rows.map((r) => {
       const etapa = r.etapa as Etapa;
       return {
@@ -157,6 +168,7 @@ export class Casos {
         motorista: String(r.motorista),
         dataHora: String(r.data_hora),
         tipo: String(r.tipo),
+        tipoOutro: String(r.tipo_outro ?? ''),
         nivel: Number(r.nivel) as Nivel,
         etapa,
         propriedade: r.propriedade as Propriedade,
@@ -170,7 +182,7 @@ export class Casos {
     const limite = new Date(Date.parse(agoraIso + ':00Z') - 30 * 86400000).toISOString().slice(0, 16);
     const casos = this.db.prepare('SELECT id, data_hora, nivel, etapa FROM casos').all() as Row[];
     const recentes = casos.filter((c) => String(c.data_hora) >= limite);
-    const porEtapa = { classificacao: 0, investigacao: 0, acompanhamento: 0 };
+    const porEtapa = { rascunho: 0, classificacao: 0, investigacao: 0, acompanhamento: 0 };
     for (const c of casos) if (String(c.etapa) in porEtapa) porEtapa[c.etapa as keyof typeof porEtapa]++;
     const semEvid = this.db
       .prepare(
@@ -187,7 +199,7 @@ export class Casos {
     return {
       sinistros30d: recentes.length,
       graves30d: recentes.filter((c) => Number(c.nivel) >= 2).length,
-      abertos: porEtapa.classificacao + porEtapa.investigacao + porEtapa.acompanhamento,
+      abertos: porEtapa.rascunho + porEtapa.classificacao + porEtapa.investigacao + porEtapa.acompanhamento,
       abertosPorEtapa: porEtapa,
       acoesSemEvidencia: Number(semEvid.n),
       diasSemGravissimo: dias,
@@ -232,49 +244,70 @@ export class Casos {
     return mapAnexo(this.db.prepare('SELECT * FROM anexos WHERE id = ?').get(id) as Row);
   }
 
-  registrar(input: RegistroInput, arquivos: ArquivoRecebido[], u: Usuario, quando = agora()): Caso {
-    const e = validarRegistro(input);
-    if (e.length) throw new HttpError(422, 'Revise os campos do registro', e);
+  /**
+   * Registra um sinistro. Com `rascunho`, basta placa e horário (registro rápido); o caso fica
+   * na etapa "rascunho" até ser completado. Com `id`, atualiza/completa um rascunho existente.
+   */
+  registrar(input: RegistroInput, arquivos: ArquivoRecebido[], u: Usuario, quando = agora(), opts: { rascunho?: boolean; id?: string } = {}): Caso {
+    const rascunho = !!opts.rascunho;
+    const e = validarRegistro(input, rascunho);
+    if (e.length) throw new HttpError(422, rascunho ? 'Para salvar o rascunho, informe placa e horário' : 'Revise os campos do registro', e);
     const placa = input.placa.toUpperCase().trim();
     const v = input.propriedade === 'proprio' ? veiculo(placa) : undefined;
     if (input.propriedade === 'proprio' && !v) throw new HttpError(422, 'Placa não encontrada na frota', ['Para veículo de terceiro, escolha "De terceiro"']);
+    const atual = opts.id ? this.rowCaso(opts.id) : null;
+    if (atual) this.exigirEtapa(atual, 'rascunho');
+
+    // Veículo próprio: motorista e local vêm da telemetria quando não informados.
+    const pos = v ? consultarPosicao(placa, input.dataHora) : null;
+    const motorista = input.motorista?.trim() || pos?.motorista || '';
+    const local = input.local?.trim() || pos?.local || '';
+    const tipo = input.tipo && input.tipo !== 'Selecione' ? input.tipo : '';
+    const envolvidos = (input.envolvidos ?? []).map((x, i) => (i === 0 && x.papel === 'Motorista do veículo' && (!x.nome.trim() || x.nome === 'Motorista') && motorista ? { ...x, nome: motorista } : x));
 
     return tx(this.db, () => {
-      const id = this.novoId();
-      // Veículo próprio: dados da janela são puxados agora e congelados no caso.
-      const dados = v ? coletarDados(placa, input.dataHora, quando) : null;
-      const classificacao: Classificacao = { real: { ...EMPTY_DANOS }, pot: { ...EMPTY_DANOS }, justificativa: '', confirmada: false };
-      this.db
-        .prepare(
-          `INSERT INTO casos (id, placa, modelo, categoria, unidade, propriedade, terceiro, motorista, data_hora, local, tipo,
-            condicao_via, relato, envolvidos, etapa, nivel, classificacao, investigacao, dados, registrado_por, registrado_em)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-        )
-        .run(
-          id,
-          placa,
-          v?.modelo ?? (input.modelo?.trim() || 'Veículo de terceiro'),
-          v?.categoria ?? 'Terceiro',
-          v?.unidade ?? (input.unidade?.trim() || 'Terceiro'),
-          input.propriedade,
-          input.propriedade === 'terceiro' ? JSON.stringify(input.terceiro ?? { proprietario: '', documento: '', cnh: '' }) : null,
-          input.motorista.trim(),
-          input.dataHora,
-          input.local.trim(),
-          input.tipo,
-          input.condicaoVia || 'Não informada',
-          input.relato?.trim() ?? '',
-          JSON.stringify(input.envolvidos ?? []),
-          'classificacao',
-          0,
-          JSON.stringify(classificacao),
-          JSON.stringify(EMPTY_INVESTIGACAO),
-          dados ? JSON.stringify(dados) : null,
-          autor(u) + ' · ' + u.setor,
-          quando,
-        );
-      this.log(id, 'Sinistro registrado', u, null, quando);
-      if (dados) this.log(id, `Dados da plataforma coletados e congelados (${dados.eventos.length} eventos na janela)`, 'Sistema', null, quando);
+      const id = atual ? String(atual.id) : this.novoId();
+      // Dados da janela são puxados e congelados na abertura; só são refeitos se placa ou horário mudarem no rascunho.
+      const mudouJanela = !atual || atual.placa !== placa || atual.data_hora !== input.dataHora || atual.propriedade !== input.propriedade;
+      const dados = mudouJanela ? (v ? coletarDados(placa, input.dataHora, quando, tipo) : null) : atual.dados ? J<DadosColetados>(atual.dados) : null;
+      const valores = [
+        placa,
+        v?.modelo ?? (input.modelo?.trim() || 'Veículo de terceiro'),
+        v?.categoria ?? 'Terceiro',
+        v?.unidade ?? (input.unidade?.trim() || 'Terceiro'),
+        input.propriedade,
+        input.propriedade === 'terceiro' ? JSON.stringify(input.terceiro ?? { proprietario: '', documento: '', cnh: '' }) : null,
+        motorista,
+        input.dataHora,
+        local,
+        tipo,
+        tipo === 'Outro' ? (input.tipoOutro ?? '').trim() : '',
+        input.condicaoVia || 'Não informada',
+        input.relato?.trim() ?? '',
+        JSON.stringify(envolvidos),
+        rascunho ? 'rascunho' : 'classificacao',
+        dados ? JSON.stringify(dados) : null,
+      ] as const;
+      if (atual) {
+        this.db
+          .prepare(
+            `UPDATE casos SET placa=?, modelo=?, categoria=?, unidade=?, propriedade=?, terceiro=?, motorista=?, data_hora=?, local=?, tipo=?,
+              tipo_outro=?, condicao_via=?, relato=?, envolvidos=?, etapa=?, dados=? WHERE id=?`,
+          )
+          .run(...valores, id);
+      } else {
+        const classificacao: Classificacao = { real: { ...EMPTY_DANOS }, pot: { ...EMPTY_DANOS }, justificativa: '', confirmada: false };
+        this.db
+          .prepare(
+            `INSERT INTO casos (placa, modelo, categoria, unidade, propriedade, terceiro, motorista, data_hora, local, tipo, tipo_outro,
+              condicao_via, relato, envolvidos, etapa, dados, id, nivel, classificacao, investigacao, registrado_por, registrado_em)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          )
+          .run(...valores, id, 0, JSON.stringify(classificacao), JSON.stringify(EMPTY_INVESTIGACAO), autor(u) + ' · ' + u.setor, quando);
+      }
+      if (!atual) this.log(id, rascunho ? 'Registro iniciado (rascunho)' : 'Sinistro registrado', u, null, quando);
+      else if (!rascunho) this.log(id, 'Registro completado', u, null, quando);
+      if (dados && mudouJanela) this.log(id, `Dados da plataforma coletados e congelados (${dados.eventos.length} eventos da viagem)`, 'Sistema', null, quando);
       for (const f of arquivos) {
         this.salvarArquivo(id, 'registro', f, u, null, quando);
         this.log(id, `Anexo adicionado: ${f.originalname}`, u, null, quando);
@@ -283,12 +316,12 @@ export class Casos {
     });
   }
 
-  editarIdentificacao(id: string, patch: Partial<Pick<Caso, 'motorista' | 'local' | 'tipo' | 'condicaoVia' | 'dataHora' | 'relato'>>, motivo: string, u: Usuario): Caso {
+  editarIdentificacao(id: string, patch: Partial<Pick<Caso, 'motorista' | 'local' | 'tipo' | 'tipoOutro' | 'condicaoVia' | 'dataHora' | 'relato'>>, motivo: string, u: Usuario): Caso {
     const r = this.rowCaso(id);
     this.exigirEtapa(r, 'classificacao', 'investigacao', 'acompanhamento');
     if (!motivo?.trim()) throw new HttpError(422, 'Informe o motivo da alteração');
-    const cols = { motorista: 'motorista', local: 'local', tipo: 'tipo', condicaoVia: 'condicao_via', dataHora: 'data_hora', relato: 'relato' } as const;
-    const labels = { motorista: 'Motorista', local: 'Local', tipo: 'Tipo', condicaoVia: 'Condição da via', dataHora: 'Data e hora', relato: 'Relato' } as const;
+    const cols = { motorista: 'motorista', local: 'local', tipo: 'tipo', tipoOutro: 'tipo_outro', condicaoVia: 'condicao_via', dataHora: 'data_hora', relato: 'relato' } as const;
+    const labels = { motorista: 'Motorista', local: 'Local', tipo: 'Tipo', tipoOutro: 'Descrição do tipo', condicaoVia: 'Condição da via', dataHora: 'Data e hora', relato: 'Relato' } as const;
     return tx(this.db, () => {
       for (const [k, col] of Object.entries(cols) as [keyof typeof cols, string][]) {
         const novo = patch[k];
@@ -300,9 +333,9 @@ export class Casos {
     });
   }
 
+  /** Envolvidos podem ser incluídos em qualquer etapa, inclusive após a conclusão. */
   adicionarEnvolvido(id: string, env: Envolvido, u: Usuario): Caso {
     const r = this.rowCaso(id);
-    this.exigirEtapa(r, 'classificacao', 'investigacao', 'acompanhamento');
     if (!env.nome?.trim() || !env.papel?.trim()) throw new HttpError(422, 'Informe nome e papel do envolvido');
     const lista = J<Envolvido[]>(r.envolvidos);
     lista.push({ nome: env.nome.trim(), papel: env.papel, veiculo: env.veiculo?.trim() ?? '', lesao: env.lesao || 'Sem lesão' });
@@ -313,9 +346,57 @@ export class Casos {
     });
   }
 
+  /**
+   * Atualiza a lesão de um envolvido depois do registro (ex.: lesão grave que evolui para óbito).
+   * Vale em qualquer etapa, inclusive em caso concluído; exige motivo e fica no histórico.
+   */
+  atualizarLesao(id: string, indice: number, lesao: string, motivo: string, u: Usuario, quando = agora()): Caso {
+    const r = this.rowCaso(id);
+    const lista = J<Envolvido[]>(r.envolvidos);
+    const env = lista[indice];
+    if (!env) throw new HttpError(404, 'Envolvido não encontrado');
+    if (!LESOES.includes(lesao as (typeof LESOES)[number])) throw new HttpError(422, 'Lesão inválida');
+    if (!motivo?.trim()) throw new HttpError(422, 'Informe o motivo da atualização');
+    if (env.lesao === lesao) return this.obter(id);
+    const dias = diasDesde(String(r.data_hora), quando);
+    return tx(this.db, () => {
+      const antes = env.lesao;
+      lista[indice] = { ...env, lesao };
+      this.db.prepare('UPDATE casos SET envolvidos = ? WHERE id = ?').run(JSON.stringify(lista), id);
+      this.log(id, `Lesão de ${env.nome} atualizada: ${antes} → ${lesao} (${dias} ${dias === 1 ? 'dia' : 'dias'} após o sinistro)`, u, motivo.trim(), quando);
+      return this.obter(id);
+    });
+  }
+
+  /**
+   * Corrige a natureza de um evento da plataforma (ex.: "uso de celular" que era um cochilo).
+   * Guarda original e corrigido; só é permitido até PRAZO_CORRECAO_DIAS após o sinistro.
+   * A correção fica marcada como pendente de envio à base de eventos.
+   */
+  corrigirEvento(id: string, eventoId: string, corrigido: string, motivo: string, u: Usuario, quando = agora()): Caso {
+    const r = this.rowCaso(id);
+    this.exigirEtapa(r, 'investigacao', 'acompanhamento');
+    const dados = r.dados ? J<DadosColetados>(r.dados) : null;
+    const ev = dados?.eventos.find((e) => e.id === eventoId);
+    if (!ev) throw new HttpError(404, 'Evento não encontrado nos dados do caso');
+    if (!podeCorrigirEvento(String(r.data_hora), quando))
+      throw new HttpError(409, `A natureza do evento só pode ser corrigida até ${PRAZO_CORRECAO_DIAS} dias após o sinistro`);
+    if (!TIPOS_EVENTO.includes(corrigido as (typeof TIPOS_EVENTO)[number])) throw new HttpError(422, 'Tipo de evento inválido');
+    if (!motivo?.trim()) throw new HttpError(422, 'Informe o motivo da correção');
+    const lista = J<CorrecaoEvento[]>(r.correcoes ?? '[]');
+    const atualNome = eventoCorrigido(lista, eventoId)?.corrigido ?? ev.evento;
+    if (atualNome === corrigido) throw new HttpError(422, 'O evento já está com essa natureza');
+    lista.push({ eventoId, original: ev.evento, corrigido, motivo: motivo.trim(), autor: autor(u), data: quando, pendenteBase: true });
+    return tx(this.db, () => {
+      this.db.prepare('UPDATE casos SET correcoes = ? WHERE id = ?').run(JSON.stringify(lista), id);
+      this.log(id, `Evento ${ev.horario} corrigido: ${atualNome} → ${corrigido}`, u, motivo.trim(), quando);
+      return this.obter(id);
+    });
+  }
+
   anexar(id: string, contexto: 'registro' | 'investigacao', arquivos: ArquivoRecebido[], u: Usuario): Caso {
     const r = this.rowCaso(id);
-    this.exigirEtapa(r, 'classificacao', 'investigacao', 'acompanhamento');
+    this.exigirEtapa(r, 'rascunho', 'classificacao', 'investigacao', 'acompanhamento');
     if (!arquivos.length) throw new HttpError(422, 'Nenhum arquivo enviado');
     return tx(this.db, () => {
       for (const f of arquivos) {
@@ -331,6 +412,9 @@ export class Casos {
     this.exigirEtapa(r, 'classificacao');
     const real = normalizarDanos(c.real);
     const pot = normalizarDanos(c.pot);
+    // O dano potencial nunca é menor que o real, em nenhuma dimensão.
+    const menores = DIMENSOES.filter((d) => pot[d.key] < real[d.key]).map((d) => d.label);
+    if (menores.length) throw new HttpError(422, 'O dano potencial não pode ser menor que o dano real', menores.map((m) => `Revise ${m}`));
     const justificativa = (c.justificativa ?? '').trim();
     const nivel = nivelDoCaso({ real, pot });
     if (confirmar && maxNivel(pot) > maxNivel(real) && !justificativa)
@@ -495,7 +579,7 @@ export class Casos {
       dataAcidente: c.dataHora.slice(0, 10),
       horaAcidente: c.dataHora.slice(11, 16),
       localAcidente: c.local,
-      descricao: `${c.tipo}. ${c.relato}`.trim(),
+      descricao: `${tipoLabel(c)}. ${c.relato}`.trim(),
       veiculo: `${c.placa} · ${c.modelo}`,
       houveAfastamento: lesionados.some((e) => e.lesao === 'Lesão grave' || e.lesao === 'Óbito'),
       houveObito: lesionados.some((e) => e.lesao === 'Óbito'),
@@ -517,6 +601,7 @@ export interface RegistroInput {
   dataHora: string;
   local: string;
   tipo: string;
+  tipoOutro?: string;
   condicaoVia?: string;
   relato?: string;
   envolvidos?: Envolvido[];
@@ -525,12 +610,15 @@ export interface RegistroInput {
 const RE_DATAHORA = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 const RE_DATA = /^\d{4}-\d{2}-\d{2}$/;
 
-export function validarRegistro(i: Partial<RegistroInput>): string[] {
+export function validarRegistro(i: Partial<RegistroInput>, rascunho = false): string[] {
   const e: string[] = [];
   if (i.propriedade !== 'proprio' && i.propriedade !== 'terceiro') e.push('Escolha se o veículo é próprio ou de terceiro');
   if (!i.placa?.trim()) e.push('Informe a placa');
   if (!i.dataHora || !RE_DATAHORA.test(i.dataHora)) e.push('Informe data e hora do sinistro');
   else if (i.dataHora > agora()) e.push('A data e hora do sinistro não pode estar no futuro');
+  // Registro rápido: o rascunho só exige placa e horário.
+  if (rascunho) return [...new Set(e)];
+  if (i.tipo === 'Outro' && !i.tipoOutro?.trim()) e.push('Descreva o tipo de sinistro');
   if (!i.motorista?.trim()) e.push('Informe o motorista');
   if (!i.local?.trim()) e.push('Informe o local');
   if (!i.tipo?.trim() || i.tipo === 'Selecione') e.push('Selecione o tipo de sinistro');

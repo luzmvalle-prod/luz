@@ -3,7 +3,7 @@
 // dados são determinísticos a partir da placa e do horário, para que o fluxo possa ser
 // exercitado em localhost sem dependências externas.
 
-import type { DadosColetados, EventoPlataforma, GrupoColetado, Jornada } from '../shared/domain.ts';
+import type { DadosColetados, EventoPlataforma, GrupoColetado, HistoricoMotorista, Jornada, VeiculoNoSinistro } from '../shared/domain.ts';
 
 export interface Veiculo {
   placa: string;
@@ -74,7 +74,7 @@ export function consultarPosicao(placa: string, dataHora: string): { motorista: 
  * Puxa jornada, eventos de telemetria e videotelemetria, manutenção e vídeo da janela do
  * sinistro. O resultado é gravado no caso e nunca recalculado ("congelado").
  */
-export function coletarDados(placa: string, dataHora: string, coletadoEm: string): DadosColetados | null {
+export function coletarDados(placa: string, dataHora: string, coletadoEm: string, tipo = ''): DadosColetados | null {
   const v = veiculo(placa);
   if (!v) return null;
   if (v.placa === 'RTB-4E21' && dataHora === '2026-09-22T07:42') return fixtureRTB(coletadoEm);
@@ -97,27 +97,32 @@ export function coletarDados(placa: string, dataHora: string, coletadoEm: string
     interjornadaMin: int(r, 9 * 60, 13 * 60),
   };
 
-  const pool: Omit<EventoPlataforma, 'id' | 'horario'>[] = [
-    { origem: 'Telemetria', evento: 'Excesso de velocidade', detalhe: `${velInfleet + int(r, 4, 14)} km/h em trecho de ${velInfleet > 60 ? 80 : 60} km/h` },
+  // Eventos da viagem inteira: do início da jornada até o sinistro.
+  const pool: Omit<EventoPlataforma, 'id' | 'horario' | 'velocidade'>[] = [
+    { origem: 'Telemetria', evento: 'Excesso de velocidade', detalhe: `Acima do limite do trecho` },
     { origem: 'Telemetria', evento: 'Frenagem brusca', detalhe: 'Desaceleração acima de 0,4 g' },
     { origem: 'Videotelemetria', evento: 'Uso de celular', detalhe: 'Câmera interna: celular na mão' },
     { origem: 'Videotelemetria', evento: 'Distância insegura', detalhe: 'Câmera externa: menos de 2 s do veículo à frente' },
     { origem: 'Videotelemetria', evento: 'Fadiga', detalhe: 'Câmera interna: olhos fechados por 2 s' },
+    { origem: 'Videotelemetria', evento: 'Distração', detalhe: 'Câmera interna: olhar fora da via por 3 s' },
     { origem: 'Telemetria', evento: 'Manobra brusca', detalhe: 'Guinada lateral' },
   ];
   const eventos: EventoPlataforma[] = [];
-  const n = int(r, 1, 4);
-  const usados = new Set<number>();
+  const n = int(r, 3, 9);
+  const duracaoSeg = (momento - jornadaInicio) * 60;
   for (let i = 0; i < n; i++) {
-    let k = int(r, 0, pool.length - 1);
-    while (usados.has(k)) k = (k + 1) % pool.length;
-    usados.add(k);
-    const seg = momento * 60 - int(r, 20, 20 * 60);
-    eventos.push({ id: `ev${i + 1}`, horario: hhmmss(seg), ...pool[k] });
+    const p = pool[int(r, 0, pool.length - 1)];
+    const seg = jornadaInicio * 60 + int(r, 60, Math.max(120, duracaoSeg - 30));
+    const vel = p.evento === 'Excesso de velocidade' ? int(r, 82, 104) : int(r, 12, 88);
+    eventos.push({ id: `ev${i + 1}`, horario: hhmmss(seg), ...p, detalhe: p.evento === 'Excesso de velocidade' ? `${vel} km/h em trecho de 80 km/h` : p.detalhe, velocidade: vel });
   }
   if (!cameraInternaOk)
-    eventos.push({ id: 'ev-cam', horario: `${hhmm(jornadaInicio + 15)} → ${hhmm(momento)}`, origem: 'Videotelemetria', evento: 'Câmera interna obstruída', detalhe: 'Persistente na jornada' });
-  eventos.push({ id: 'ev-imp', horario: hhmmss(momento * 60 + 6), origem: 'Telemetria', evento: 'Impacto detectado', detalhe: 'Acelerômetro' });
+    eventos.push({ id: 'ev-cam', horario: `${hhmm(jornadaInicio + 15)} → ${hhmm(momento)}`, origem: 'Videotelemetria', evento: 'Câmera interna obstruída', detalhe: 'Persistente na jornada', velocidade: null });
+  // Eventos no momento do sinistro: só os que a telemetria avançada gera hoje.
+  if (tipo === 'Tombamento')
+    eventos.push({ id: 'ev-cap', horario: hhmmss(momento * 60 + 4), origem: 'Telemetria', evento: 'Capotamento', detalhe: 'Força G lateral acima do limite', velocidade: velInfleet });
+  else if (r() < 0.7)
+    eventos.push({ id: 'ev-rc', horario: hhmmss(momento * 60 - 3), origem: 'Videotelemetria', evento: 'Risco de colisão', detalhe: 'Câmera externa: aproximação rápida do veículo à frente', velocidade: velInfleet });
   eventos.sort((a, b) => a.horario.localeCompare(b.horario));
 
   const ultimaCorretiva = new Date(Date.parse(dataHora.slice(0, 10)) - int(r, 7, 90) * 86400000).toISOString().slice(0, 10);
@@ -148,6 +153,7 @@ export function coletarDados(placa: string, dataHora: string, coletadoEm: string
     },
   ];
 
+  const km30d = int(r, 18, 95) * 100;
   const observacoes: string[] = [];
   if (temAutotrack && Math.abs(velInfleet - velAutotrack) >= 5)
     observacoes.push('As duas fontes de velocidade divergem. O caso guarda as duas; nenhuma substitui a outra.');
@@ -157,13 +163,38 @@ export function coletarDados(placa: string, dataHora: string, coletadoEm: string
     grupos,
     eventos,
     jornada,
-    historico30d: [
-      { evento: 'Uso de celular', ocorrencias: int(r, 0, 5) },
-      { evento: 'Câmera obstruída', ocorrencias: int(r, 0, 3) },
-      { evento: 'Excesso de velocidade', ocorrencias: int(r, 0, 6) },
-      { evento: 'Frenagem brusca', ocorrencias: int(r, 0, 4) },
-    ],
+    historico30d: historico(r, km30d),
+    km30d,
+    veiculo: veiculoGerado(r, dataHora),
     observacoes,
+  };
+}
+
+const EVENTOS_HIST = ['Uso de celular', 'Câmera obstruída', 'Excesso de velocidade', 'Frenagem brusca'];
+const MEDIA_FROTA: Record<string, number> = { 'Uso de celular': 0.6, 'Câmera obstruída': 0.3, 'Excesso de velocidade': 0.8, 'Frenagem brusca': 0.5 };
+
+/** Ocorrências em 30 dias, normalizadas por 1.000 km e comparadas com a frota. */
+function historicoCom(ocorrencias: Record<string, number>, km30d: number): HistoricoMotorista[] {
+  return EVENTOS_HIST.map((evento) => {
+    const oc = ocorrencias[evento] ?? 0;
+    const por1000km = Math.round((oc / km30d) * 1000 * 100) / 100;
+    const media = MEDIA_FROTA[evento];
+    // Posição aproximada na frota a partir da razão com a média (simulação).
+    const percentil = Math.max(1, Math.min(99, Math.round(50 + 35 * Math.tanh(Math.log((por1000km + 0.01) / media)))));
+    return { evento, ocorrencias: oc, por1000km, mediaFrota: media, percentil };
+  });
+}
+function historico(r: () => number, km30d: number) {
+  return historicoCom(Object.fromEntries(EVENTOS_HIST.map((e) => [e, int(r, 0, 7)])), km30d);
+}
+function veiculoGerado(r: () => number, dataHora: string): VeiculoNoSinistro {
+  const dia = dataHora.slice(0, 10);
+  const nc = ['Pneu dianteiro com desgaste', 'Luz de freio queimada', 'Retrovisor direito solto', 'Câmera interna com obstrução parcial'];
+  const pend = r() < 0.4 ? [nc[int(r, 0, nc.length - 1)]] : [];
+  const venc = r() < 0.3 ? [{ item: 'Revisão preventiva de freios', venceuEm: new Date(Date.parse(dia) - int(r, 3, 40) * 86400000).toISOString().slice(0, 10) }] : [];
+  return {
+    checklist: { data: `${dia}T${pad(int(r, 4, 6))}:${pad(int(r, 0, 59))}`, resultado: pend.length ? 'Aprovado com ressalva' : 'Aprovado', naoConformidades: pend },
+    manutencoesVencidas: venc,
   };
 }
 
@@ -197,19 +228,20 @@ function fixtureRTB(coletadoEm: string): DadosColetados {
       },
     ],
     eventos: [
-      { id: 'ev-cam', horario: '05:48 → 07:42', origem: 'Videotelemetria', evento: 'Câmera interna obstruída', detalhe: 'Persistente desde o início da jornada' },
-      { id: 'ev1', horario: '07:36:14', origem: 'Telemetria', evento: 'Excesso de velocidade', detalhe: '82 km/h em trecho de 80 km/h, por 40 s' },
-      { id: 'ev2', horario: '07:41:58', origem: 'Videotelemetria', evento: 'Sem frenagem com veículo à frente', detalhe: 'Câmera externa: veículos à frente reduzindo' },
-      { id: 'ev3', horario: '07:42:04', origem: 'Telemetria', evento: 'Manobra brusca', detalhe: 'Guinada para o acostamento' },
-      { id: 'ev-imp', horario: '07:42:06', origem: 'Telemetria', evento: 'Impacto detectado', detalhe: 'Acelerômetro' },
+      { id: 'ev-cam', horario: '05:48 → 07:42', origem: 'Videotelemetria', evento: 'Câmera interna obstruída', detalhe: 'Persistente desde o início da jornada', velocidade: null },
+      { id: 'ev4', horario: '06:14:32', origem: 'Telemetria', evento: 'Frenagem brusca', detalhe: 'Desaceleração de 0,45 g', velocidade: 61 },
+      { id: 'ev5', horario: '06:51:07', origem: 'Videotelemetria', evento: 'Distância insegura', detalhe: 'Câmera externa: 1,4 s do veículo à frente', velocidade: 76 },
+      { id: 'ev1', horario: '07:36:14', origem: 'Telemetria', evento: 'Excesso de velocidade', detalhe: '82 km/h em trecho de 80 km/h, por 40 s', velocidade: 82 },
+      { id: 'ev2', horario: '07:41:58', origem: 'Videotelemetria', evento: 'Risco de colisão', detalhe: 'Câmera externa: veículos à frente reduzindo, sem frenagem', velocidade: 74 },
+      { id: 'ev3', horario: '07:42:04', origem: 'Telemetria', evento: 'Manobra brusca', detalhe: 'Guinada para o acostamento', velocidade: 71 },
     ],
     jornada: { inicio: '05:30', horasTrabalhadasMin: 132, direcaoContinuaMin: 132, interjornadaMin: 665 },
-    historico30d: [
-      { evento: 'Uso de celular', ocorrencias: 4 },
-      { evento: 'Câmera obstruída', ocorrencias: 3 },
-      { evento: 'Excesso de velocidade', ocorrencias: 2 },
-      { evento: 'Frenagem brusca', ocorrencias: 1 },
-    ],
+    historico30d: historicoCom({ 'Uso de celular': 4, 'Câmera obstruída': 3, 'Excesso de velocidade': 2, 'Frenagem brusca': 1 }, 6420),
+    km30d: 6420,
+    veiculo: {
+      checklist: { data: '2026-09-22T05:20', resultado: 'Aprovado com ressalva', naoConformidades: ['Câmera interna com obstrução parcial'] },
+      manutencoesVencidas: [],
+    },
     observacoes: ['As duas fontes de velocidade divergem. O caso guarda as duas; nenhuma substitui a outra.'],
   };
 }

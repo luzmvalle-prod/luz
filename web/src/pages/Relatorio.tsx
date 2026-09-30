@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { DIMENSOES, ETAPA_LABEL, NIVEIS, STATUS_ACAO_LABEL, avaliarJornada, origemDoNivel } from '../../../shared/domain.ts';
+import { DIMENSOES, ETAPA_LABEL, NIVEIS, STATUS_ACAO_LABEL, avaliarJornada, eventoCorrigido, origemDoNivel, tipoLabel } from '../../../shared/domain.ts';
 import { useCaso } from '../components/caso.tsx';
 import { Loading } from '../components/ui.tsx';
 import { fmtData, fmtDataHora, fmtDuracao } from '../format.ts';
@@ -33,7 +33,7 @@ export function Relatorio() {
             Relatório do sinistro {c.id} · {NIVEIS[c.nivel]}
           </h1>
           <span className="subtitle">
-            {c.tipo} · {c.placa} · {c.modelo} · {c.motorista} · {fmtDataHora(c.dataHora)} · Etapa: {ETAPA_LABEL[c.etapa]}
+            {tipoLabel(c)} · {c.placa} · {c.modelo} · {c.motorista} · {fmtDataHora(c.dataHora)} · Etapa: {ETAPA_LABEL[c.etapa]}
           </span>
         </header>
 
@@ -118,8 +118,13 @@ export function Relatorio() {
                 {d.eventos.map((e) => (
                   <tr key={e.id}>
                     <td>Evento{inv.evidencias.includes(e.id) ? ' · evidência' : ''}</td>
-                    <td>{e.evento}</td>
-                    <td>{e.horario}</td>
+                    <td>
+                      {eventoCorrigido(c.correcoes, e.id) ? `${eventoCorrigido(c.correcoes, e.id)!.corrigido} (corrigido; era ${e.evento})` : e.evento}
+                    </td>
+                    <td>
+                      {e.horario}
+                      {e.velocidade != null && ` · ${e.velocidade} km/h`}
+                    </td>
                     <td>{e.origem}</td>
                   </tr>
                 ))}

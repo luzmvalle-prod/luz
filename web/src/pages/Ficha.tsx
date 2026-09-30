@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { CONDICOES_VIA, DIMENSOES, ETAPA_LABEL, NIVEIS, TIPOS_SINISTRO, origemDoNivel, type Caso } from '../../../shared/domain.ts';
+import { CONDICOES_VIA, DIMENSOES, ETAPA_LABEL, LESOES, NIVEIS, TIPOS_SINISTRO, diasDesde, nivelPelasLesoes, origemDoNivel, tipoLabel, type Caso } from '../../../shared/domain.ts';
+import { EventosTabela, HistoricoMotoristaTabela, VeiculoBloco } from '../components/eventos.tsx';
 import { api } from '../api.ts';
 import { CasoGate, CasoHeader, useCaso, useMutacao } from '../components/caso.tsx';
 import { AnexoItem, Card, Field, Modal, useToast } from '../components/ui.tsx';
@@ -35,6 +36,7 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
   const [editar, setEditar] = useState(false);
   const [envModal, setEnvModal] = useState(false);
   const [reabrir, setReabrir] = useState(false);
+  const [lesaoIdx, setLesaoIdx] = useState<number | null>(null);
   const { run } = useMutacao(setCaso);
   const aberto = !caso.etapa.startsWith('concluido');
 
@@ -43,7 +45,7 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
       <CasoHeader
         caso={caso}
         eyebrow="Ficha do caso"
-        titulo={caso.tipo}
+        titulo={tipoLabel(caso)}
         semFicha
         actions={
           <>
@@ -123,7 +125,7 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
                   </>
                 )}
                 <dt>Tipo</dt>
-                <dd>{caso.tipo}</dd>
+                <dd>{tipoLabel(caso)}</dd>
                 <dt>Condição da via</dt>
                 <dd>{caso.condicaoVia}</dd>
                 <dt>Relato do motorista</dt>
@@ -166,13 +168,17 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
               <Card
                 title="Envolvidos"
                 right={
-                  aberto && (
-                    <button className="btn ghost sm" onClick={() => setEnvModal(true)}>
-                      Adicionar envolvido
-                    </button>
-                  )
+                  <button className="btn ghost sm" onClick={() => setEnvModal(true)}>
+                    Adicionar envolvido
+                  </button>
                 }
               >
+                {caso.classificacao.confirmada && nivelPelasLesoes(caso.envolvidos) > caso.classificacao.real.pessoas && (
+                  <div className="note warn">
+                    A lesão registrada indica dano real <strong>{NIVEIS[nivelPelasLesoes(caso.envolvidos)]}</strong> em Pessoas, mas a classificação está como{' '}
+                    <strong>{NIVEIS[caso.classificacao.real.pessoas]}</strong>. {aberto ? 'Revise a classificação com o comitê.' : 'Reabra o caso para revisar a classificação.'}
+                  </div>
+                )}
                 <table className="table flush">
                   <thead>
                     <tr>
@@ -180,6 +186,7 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
                       <th>Papel</th>
                       <th>Veículo</th>
                       <th>Lesão</th>
+                      <th />
                     </tr>
                   </thead>
                   <tbody>
@@ -189,10 +196,16 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
                         <td className="muted">{e.papel}</td>
                         <td className="muted">{e.veiculo || '—'}</td>
                         <td className="muted">{e.lesao}</td>
+                        <td style={{ textAlign: 'right' }}>
+                          <button className="btn ghost sm" onClick={() => setLesaoIdx(i)}>
+                            Atualizar lesão
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                <p className="hint">A lesão pode ser atualizada a qualquer momento, inclusive com o caso concluído (ex.: lesão grave que evolui para óbito).</p>
               </Card>
               <Card title="Anexos">
                 {caso.anexos.length === 0 && <span className="hint">Nenhum anexo.</span>}
@@ -204,7 +217,9 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
           </div>
         )}
 
-        {tab === 'dados' && <DadosTab caso={caso} />}
+        {tab === 'dados' && (
+          <DadosTab caso={caso} onCorrigir={async (eventoId, corrigido, motivo) => !!(await run(() => api.corrigirEvento(caso.id, eventoId, corrigido, motivo), 'Evento corrigido'))} />
+        )}
         {tab === 'invest' && <InvestTab caso={caso} />}
 
         {tab === 'plano' && (
@@ -269,6 +284,14 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
       </div>
 
       {editar && <EditarModal caso={caso} onClose={() => setEditar(false)} onSave={(patch, motivo) => run(() => api.editarIdentificacao(caso.id, patch, motivo), 'Dados corrigidos').then((c) => c && setEditar(false))} />}
+      {lesaoIdx !== null && (
+        <LesaoModal
+          caso={caso}
+          indice={lesaoIdx}
+          onClose={() => setLesaoIdx(null)}
+          onSave={(lesao, motivo) => run(() => api.atualizarLesao(caso.id, lesaoIdx, lesao, motivo), 'Lesão atualizada').then((c) => c && setLesaoIdx(null))}
+        />
+      )}
       {envModal && <EnvolvidoModal onClose={() => setEnvModal(false)} onSave={(e) => run(() => api.adicionarEnvolvido(caso.id, e), 'Envolvido adicionado').then((c) => c && setEnvModal(false))} />}
       {reabrir && (
         <ReabrirModal
@@ -290,7 +313,7 @@ const AnexoLink = ({ id, nome }: { id: string; nome: string }) => (
   </a>
 );
 
-export function DadosTab({ caso }: { caso: Caso }) {
+export function DadosTab({ caso, onCorrigir }: { caso: Caso; onCorrigir?: (eventoId: string, corrigido: string, motivo: string) => Promise<boolean> }) {
   const d = caso.dados;
   if (!d)
     return (
@@ -315,10 +338,15 @@ export function DadosTab({ caso }: { caso: Caso }) {
           {d.grupos.map((g) => (
             <GrupoRows key={g.nome} nome={g.nome} rows={g.itens.map((i) => [i.campo, i.valor, i.fonte, i.coletadoEm])} />
           ))}
-          <GrupoRows nome="Eventos na janela" rows={d.eventos.map((e) => [e.evento, e.horario, e.origem, at])} />
         </tbody>
       </table>
+      <div className="stack" style={{ gap: 8 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 600 }}>Eventos da viagem</h3>
+        <EventosTabela caso={caso} onCorrigir={onCorrigir} />
+      </div>
       {d.jornada && <JornadaTabela jornada={d.jornada} />}
+      <HistoricoMotoristaTabela historico={d.historico30d} km30d={d.km30d} />
+      <VeiculoBloco veiculo={d.veiculo} />
       {d.observacoes.map((o) => (
         <div key={o} className="note warn">
           {o}
@@ -426,7 +454,7 @@ export function InvestTab({ caso }: { caso: Caso }) {
 }
 
 function EditarModal({ caso, onClose, onSave }: { caso: Caso; onClose: () => void; onSave: (patch: object, motivo: string) => void }) {
-  const [p, setP] = useState({ motorista: caso.motorista, local: caso.local, tipo: caso.tipo, condicaoVia: caso.condicaoVia, dataHora: caso.dataHora, relato: caso.relato });
+  const [p, setP] = useState({ motorista: caso.motorista, local: caso.local, tipo: caso.tipo, tipoOutro: caso.tipoOutro, condicaoVia: caso.condicaoVia, dataHora: caso.dataHora, relato: caso.relato });
   const [motivo, setMotivo] = useState('');
   return (
     <Modal
@@ -458,6 +486,11 @@ function EditarModal({ caso, onClose, onSave }: { caso: Caso; onClose: () => voi
             ))}
           </select>
         </Field>
+        {p.tipo === 'Outro' && (
+          <Field label="Descreva o tipo" htmlFor="ed-tipo-outro">
+            <input id="ed-tipo-outro" className="input" value={p.tipoOutro} onChange={(e) => setP({ ...p, tipoOutro: e.target.value })} />
+          </Field>
+        )}
         <Field label="Condição da via" htmlFor="ed-via">
           <select id="ed-via" className="select" value={p.condicaoVia} onChange={(e) => setP({ ...p, condicaoVia: e.target.value })}>
             {CONDICOES_VIA.map((t) => (
@@ -474,6 +507,47 @@ function EditarModal({ caso, onClose, onSave }: { caso: Caso; onClose: () => voi
       </Field>
       <Field label="Motivo da correção" htmlFor="ed-motivo">
         <textarea id="ed-motivo" className="textarea" rows={2} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Fica registrado no histórico" />
+      </Field>
+    </Modal>
+  );
+}
+
+function LesaoModal({ caso, indice, onClose, onSave }: { caso: Caso; indice: number; onClose: () => void; onSave: (lesao: string, motivo: string) => void }) {
+  const env = caso.envolvidos[indice];
+  const [lesao, setLesao] = useState(env.lesao);
+  const [motivo, setMotivo] = useState('');
+  const hoje = new Date().toISOString().slice(0, 10);
+  const dias = diasDesde(caso.dataHora, hoje);
+  return (
+    <Modal
+      title={`Atualizar lesão · ${env.nome}`}
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn outline" onClick={onClose}>
+            Cancelar
+          </button>
+          <button className="btn" disabled={lesao === env.lesao || !motivo.trim()} onClick={() => onSave(lesao, motivo)}>
+            Salvar
+          </button>
+        </>
+      }
+    >
+      <p className="help">
+        {dias} {dias === 1 ? 'dia' : 'dias'} após o sinistro. Lesão atual: <strong>{env.lesao}</strong>.
+      </p>
+      {lesao === 'Óbito' && (
+        <div className="note warn">Óbito decorrente do acidente dentro do prazo da metodologia (30 a 60 dias) conta como acidente de trânsito. Confira o prazo com a metodologia INFLEET.</div>
+      )}
+      <Field label="Lesão" htmlFor="les-nova">
+        <select id="les-nova" className="select" value={lesao} onChange={(e) => setLesao(e.target.value)}>
+          {LESOES.map((l) => (
+            <option key={l}>{l}</option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Motivo" htmlFor="les-motivo">
+        <textarea id="les-motivo" className="textarea" rows={2} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ex.: informação do hospital" />
       </Field>
     </Modal>
   );

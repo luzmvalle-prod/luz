@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ETAPA_LABEL, NIVEIS, TIPOS_SINISTRO, type CasoResumo, type Etapa, type Indicadores } from '../../../shared/domain.ts';
+import { ETAPA_LABEL, NIVEIS, TIPOS_SINISTRO, tipoLabel, type CasoResumo, type Etapa, type Indicadores } from '../../../shared/domain.ts';
 import { api } from '../api.ts';
 import { IconChevronRight, Loading, NivelBadge, PageHeader, Shell } from '../components/ui.tsx';
 import { fmtData, fmtDataHora, rotaDaEtapa } from '../format.ts';
 
 const ABAS: { label: string; etapas: Etapa[] | null }[] = [
   { label: 'Todos', etapas: null },
+  { label: 'Registro', etapas: ['rascunho'] },
   { label: 'Classificação', etapas: ['classificacao'] },
   { label: 'Investigação', etapas: ['investigacao'] },
   { label: 'Acompanhamento', etapas: ['acompanhamento'] },
@@ -82,11 +83,15 @@ export function Lista() {
       </PageHeader>
 
       <div className="kpis">
+        <Kpi
+          destaque
+          k="Dias sem gravíssimo"
+          v={ind ? (ind.diasSemGravissimo ?? '—') : undefined}
+          s={ind?.ultimoGravissimo ? `último em ${fmtData(ind.ultimoGravissimo)}` : 'nenhum registrado'}
+        />
         <Kpi k="Sinistros" v={ind?.sinistros30d} s="últimos 30 dias" />
-        <Kpi k="Graves e gravíssimos" v={ind?.graves30d} s="exigem investigação" />
-        <Kpi k="Casos abertos" v={ind?.abertos} s={pe ? pe.classificacao === pe.investigacao && pe.investigacao === pe.acompanhamento ? `${pe.classificacao} em cada etapa` : `${pe.classificacao} · ${pe.investigacao} · ${pe.acompanhamento} por etapa` : ''} />
+        <Kpi k="Casos abertos" v={ind?.abertos} s={pe ? resumoAbertos(pe) : ''} />
         <Kpi k="Ações sem evidência" v={ind?.acoesSemEvidencia} s="bloqueiam a conclusão" />
-        <Kpi k="Dias sem gravíssimo" v={ind ? (ind.diasSemGravissimo ?? '—') : undefined} s={ind?.ultimoGravissimo ? `desde ${fmtData(ind.ultimoGravissimo)}` : 'nenhum registrado'} />
       </div>
 
       <div style={{ padding: '16px 32px', display: 'flex', gap: 8, alignItems: 'center', background: '#fff', borderBottom: '1px solid var(--line)', borderTop: '1px solid var(--line)' }}>
@@ -177,7 +182,7 @@ export function Lista() {
                   </div>
                 </td>
                 <td>{c.motorista}</td>
-                <td>{c.tipo}</td>
+                <td>{tipoLabel(c)}</td>
                 <td>
                   <NivelBadge nivel={c.nivel} />
                 </td>
@@ -197,9 +202,20 @@ export function Lista() {
   );
 }
 
-function Kpi({ k, v, s }: { k: string; v: number | string | undefined; s: string }) {
+function resumoAbertos(pe: Indicadores['abertosPorEtapa']) {
+  const partes = [
+    [pe.rascunho, 'em registro'],
+    [pe.classificacao, 'classif.'],
+    [pe.investigacao, 'invest.'],
+    [pe.acompanhamento, 'acomp.'],
+  ].filter(([n], i) => i > 0 || Number(n) > 0);
+  if (!pe.rascunho && pe.classificacao === pe.investigacao && pe.investigacao === pe.acompanhamento) return `${pe.classificacao} em cada etapa`;
+  return partes.map(([n, l]) => `${n} ${l}`).join(' · ');
+}
+
+function Kpi({ k, v, s, destaque }: { k: string; v: number | string | undefined; s: string; destaque?: boolean }) {
   return (
-    <div className="kpi">
+    <div className={`kpi ${destaque ? 'destaque' : ''}`}>
       <span className="k">{k}</span>
       <span className="v">{v ?? '·'}</span>
       <span className="s">{s}</span>

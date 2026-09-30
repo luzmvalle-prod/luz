@@ -203,12 +203,31 @@ export function Card({ title, n, right, children, id }: { title?: ReactNode; n?:
   );
 }
 
-export function Seg<T extends string>(p: { value: T | ''; options: readonly T[] | { value: T; label: string }[]; onChange?: (v: T) => void; label: string; width?: number; disabled?: boolean }) {
+export function Seg<T extends string>(p: {
+  value: T | '';
+  options: readonly T[] | { value: T; label: string }[];
+  onChange?: (v: T) => void;
+  label: string;
+  width?: number;
+  disabled?: boolean;
+  /** Opções indisponíveis (ex.: potencial abaixo do real). */
+  bloqueadas?: T[];
+  /** Texto de ajuda por opção, mostrado ao passar o mouse. */
+  dicas?: Partial<Record<T, string>>;
+}) {
   const opts = (p.options as (T | { value: T; label: string })[]).map((o) => (typeof o === 'string' ? { value: o, label: o } : o));
   return (
     <div className="seg" role="radiogroup" aria-label={p.label} style={p.width ? { width: p.width } : undefined}>
       {opts.map((o) => (
-        <button key={o.value} type="button" role="radio" aria-checked={p.value === o.value} disabled={p.disabled} onClick={() => p.onChange?.(o.value)}>
+        <button
+          key={o.value}
+          type="button"
+          role="radio"
+          aria-checked={p.value === o.value}
+          disabled={p.disabled || p.bloqueadas?.includes(o.value)}
+          title={p.dicas?.[o.value]}
+          onClick={() => p.onChange?.(o.value)}
+        >
           {o.label}
         </button>
       ))}
