@@ -39,7 +39,7 @@ export function Registro() {
   const editado = useRef({ motorista: false, local: false });
 
   useEffect(() => {
-    api.frota().then(setFrota);
+    api.frota().then(setFrota, () => {});
   }, []);
 
   const veiculo = useMemo(() => frota.find((v) => v.placa === placa.trim().toUpperCase()), [frota, placa]);

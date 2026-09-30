@@ -4,13 +4,18 @@ import { DB_FILE, openDb } from './db.ts';
 import { seed } from './seed.ts';
 
 const PORT = Number(process.env.API_PORT ?? process.env.PORT ?? 3001);
-const prod = process.env.NODE_ENV === 'production';
+const prod = process.argv.includes('--prod') || process.env.NODE_ENV === 'production';
 
 const db = openDb();
 if (seed(db)) console.log('[api] banco criado com os casos de exemplo');
 
 const app = criarApp(db, { estatico: prod ? path.resolve(import.meta.dirname, '..', 'dist') : undefined });
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`[api] http://localhost:${PORT}/api  ·  banco: ${DB_FILE}`);
-  if (prod) console.log(`[app] http://localhost:${PORT}`);
+  console.log(prod ? `[app] abra http://localhost:${PORT}` : '[app] abra http://localhost:5173');
+});
+server.on('error', (e: NodeJS.ErrnoException) => {
+  if (e.code === 'EADDRINUSE') console.error(`[api] A porta ${PORT} já está em uso. Feche o outro processo ou rode com API_PORT=3002.`);
+  else console.error('[api] Não foi possível iniciar:', e.message);
+  process.exit(1);
 });

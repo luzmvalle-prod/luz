@@ -27,6 +27,8 @@ export function setUsuarioId(id: string) {
   }
 }
 
+export const SEM_API = 'A API não está respondendo. Confira o terminal onde você rodou "npm run dev": a linha [api] deve mostrar http://localhost:3001/api.';
+
 async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { 'x-usuario': usuarioAtual };
   let payload: BodyInit | undefined;
@@ -35,9 +37,15 @@ async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
     headers['content-type'] = 'application/json';
     payload = JSON.stringify(body);
   }
-  const r = await fetch('/api' + url, { method, headers, body: payload });
+  let r: Response;
+  try {
+    r = await fetch('/api' + url, { method, headers, body: payload });
+  } catch {
+    throw new ApiError(SEM_API, 0);
+  }
   const data = r.headers.get('content-type')?.includes('json') ? await r.json() : null;
-  if (!r.ok) throw new ApiError(data?.erro ?? `Erro ${r.status}`, r.status, data?.detalhes ?? []);
+  // Sem corpo JSON num erro 5xx = o proxy do Vite não alcançou a API.
+  if (!r.ok) throw new ApiError(data?.erro ?? (r.status >= 500 ? SEM_API : `Erro ${r.status}`), r.status, data?.detalhes ?? []);
   return data as T;
 }
 

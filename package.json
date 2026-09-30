@@ -12,10 +12,12 @@
     "dev:api": "tsx watch --clear-screen=false server/index.ts",
     "dev:web": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
-    "start": "NODE_ENV=production tsx server/index.ts",
+    "start": "tsx server/index.ts --prod",
     "db:reset": "tsx server/reset.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test server/*.test.ts"
+    "test": "tsx --test server/*.test.ts",
+    "predev": "node scripts/check-node.mjs",
+    "prestart": "node scripts/check-node.mjs"
   },
   "dependencies": {
     "express": "^4.22.3",

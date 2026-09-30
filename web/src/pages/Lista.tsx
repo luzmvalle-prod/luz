@@ -31,9 +31,10 @@ export function Lista() {
   const [unidade, setUnidade] = useState('');
   const [tipo, setTipo] = useState('');
 
+  const [erro, setErro] = useState<string | null>(null);
   useEffect(() => {
-    api.casos().then(setCasos);
-    api.indicadores().then(setInd);
+    api.casos().then(setCasos, (e) => setErro(e.message));
+    api.indicadores().then(setInd, () => {});
   }, []);
 
   const unidades = useMemo(() => [...new Set((casos ?? []).map((c) => c.unidade))].sort(), [casos]);
@@ -136,7 +137,13 @@ export function Lista() {
         )}
       </div>
 
-      {!casos ? (
+      {erro ? (
+        <div className="empty">
+          <div className="note danger" style={{ maxWidth: 640, margin: '0 auto', textAlign: 'left' }}>
+            {erro}
+          </div>
+        </div>
+      ) : !casos ? (
         <Loading />
       ) : filtrados.length === 0 ? (
         <div className="empty">Nenhum sinistro encontrado com esses filtros.</div>

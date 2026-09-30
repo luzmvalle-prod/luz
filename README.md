@@ -26,6 +26,16 @@ Na primeira execução o banco (`data/sinistros.db`) é criado com os 5 casos do
 
 Não há login no ambiente local: o seletor **“Usando como”**, no rodapé do menu, define o autor das ações (Ana · Monitoramento, Fernanda · Qualidade, Rafaela · Sinistro, Diego · Manutenção).
 
+## Se der erro
+
+| O que aparece | Causa e solução |
+| --- | --- |
+| Navegador: “Não é possível acessar esse site” / `ERR_CONNECTION_REFUSED` | O servidor não está rodando **no seu computador**. Rode `npm run dev` e deixe o terminal aberto. |
+| Terminal: `Node.js X detectado… precisa do 22.13` ou `No such built-in module: node:sqlite` | Instale o Node.js LTS (22 ou mais recente) em https://nodejs.org, reabra o terminal e rode `npm install` de novo. Confira com `node -v`. |
+| Tela: “A API não está respondendo” | A interface subiu mas a API caiu. Veja a mensagem na linha `[api]` do terminal. |
+| Terminal: `A porta 3001 já está em uso` | Outro processo usa a porta. Feche-o ou rode `API_PORT=3002 npm run dev`. |
+| Erro no `npm install` | Apague `node_modules` e rode `npm install` de novo com o Node atualizado. |
+
 ## Fluxo e regras
 
 1. **Registro:** veículo próprio ou de terceiro. Para veículo próprio, motorista e local são sugeridos pela telemetria no horário informado. Ao registrar, jornada, eventos de telemetria e videotelemetria, manutenção e vídeo da janela são **puxados e congelados** no caso. Veículo de terceiro segue só com os dados e anexos informados.
