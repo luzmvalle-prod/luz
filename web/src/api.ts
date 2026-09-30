@@ -27,7 +27,7 @@ export function setUsuarioId(id: string) {
   }
 }
 
-export const SEM_API = 'A API não está respondendo. Confira o terminal onde você rodou "npm run dev": a linha [api] deve mostrar http://localhost:3001/api.';
+export const SEM_API = 'A API não está respondendo. Confira o terminal onde você rodou "npm run dev": a linha [api] deve mostrar http://localhost:3789/api.';
 
 async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { 'x-usuario': usuarioAtual };

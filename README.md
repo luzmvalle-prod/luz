@@ -12,7 +12,7 @@ npm run dev
 ```
 
 - Aplicação: http://localhost:5173
-- API: http://localhost:3001/api
+- API: http://localhost:3789/api
 
 Na primeira execução o banco (`data/sinistros.db`) é criado com os 5 casos do protótipo, um em cada etapa. Para voltar ao estado inicial: `npm run db:reset` (com o servidor parado).
 
@@ -21,7 +21,7 @@ Na primeira execução o banco (`data/sinistros.db`) é criado com os 5 casos do
 | `npm run dev` | API (com reload) + interface Vite |
 | `npm test` | Testes das regras de negócio |
 | `npm run typecheck` | Checagem de tipos |
-| `npm run build && npm start` | Build de produção servido pela API em http://localhost:3001 |
+| `npm run build && npm start` | Build de produção servido pela API em http://localhost:3789 |
 | `npm run db:reset` | Recria o banco com os dados de exemplo |
 
 Não há login no ambiente local: o seletor **“Usando como”**, no rodapé do menu, define o autor das ações (Ana · Monitoramento, Fernanda · Qualidade, Rafaela · Sinistro, Diego · Manutenção).
@@ -33,7 +33,7 @@ Não há login no ambiente local: o seletor **“Usando como”**, no rodapé do
 | Navegador: “Não é possível acessar esse site” / `ERR_CONNECTION_REFUSED` | O servidor não está rodando **no seu computador**. Rode `npm run dev` e deixe o terminal aberto. |
 | Terminal: `Node.js X detectado… precisa do 22.13` ou `No such built-in module: node:sqlite` | Instale o Node.js LTS (22 ou mais recente) em https://nodejs.org, reabra o terminal e rode `npm install` de novo. Confira com `node -v`. |
 | Tela: “A API não está respondendo” | A interface subiu mas a API caiu. Veja a mensagem na linha `[api]` do terminal. |
-| Terminal: `A porta 3001 já está em uso` | Outro processo usa a porta. Feche-o ou rode `API_PORT=3002 npm run dev`. |
+| Terminal: `A porta 3789 já está em uso` | Outro processo usa a porta. Feche-o ou rode `API_PORT=3790 npm run dev`. |
 | Erro no `npm install` | Apague `node_modules` e rode `npm install` de novo com o Node atualizado. |
 
 ## Fluxo e regras

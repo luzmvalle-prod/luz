@@ -3,7 +3,7 @@ import { criarApp } from './app.ts';
 import { DB_FILE, openDb } from './db.ts';
 import { seed } from './seed.ts';
 
-const PORT = Number(process.env.API_PORT ?? process.env.PORT ?? 3001);
+const PORT = Number(process.env.API_PORT ?? process.env.PORT ?? 3789);
 const prod = process.argv.includes('--prod') || process.env.NODE_ENV === 'production';
 
 const db = openDb();
@@ -15,7 +15,7 @@ const server = app.listen(PORT, () => {
   console.log(prod ? `[app] abra http://localhost:${PORT}` : '[app] abra http://localhost:5173');
 });
 server.on('error', (e: NodeJS.ErrnoException) => {
-  if (e.code === 'EADDRINUSE') console.error(`[api] A porta ${PORT} já está em uso. Feche o outro processo ou rode com API_PORT=3002.`);
+  if (e.code === 'EADDRINUSE') console.error(`[api] A porta ${PORT} já está em uso. Feche o outro processo ou rode com API_PORT=3790.`);
   else console.error('[api] Não foi possível iniciar:', e.message);
   process.exit(1);
 });
