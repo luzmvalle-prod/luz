@@ -70,21 +70,19 @@ export const LEGENDAS: Record<string, string> = {
   Indeterminada: 'Ainda não é possível atribuir a responsabilidade.',
 };
 
-/**
- * Tipos de evento para reclassificação. Lista provisória com os eventos citados no Sync
- * Safety (risco de colisão e capotamento por força G existem; "impacto/bateu" não existe);
- * substituir pelo catálogo oficial da plataforma.
- */
+/** Tipos de evento para reclassificação de um evento da plataforma. */
 export const TIPOS_EVENTO = [
   'Uso de celular',
   'Fadiga',
+  'Distração',
   'Cigarro',
-  'Sem cinto de segurança',
-  'Câmera obstruída',
   'Excesso de velocidade',
   'Frenagem brusca',
+  'Manobra brusca',
+  'Distância insegura',
   'Risco de colisão',
   'Capotamento',
+  'Câmera obstruída',
   'Falso positivo',
 ] as const;
 
@@ -196,10 +194,6 @@ export interface HistoricoMotorista {
   por1000km?: number;
   mediaFrota?: number; // por 1.000 km
   percentil?: number; // 0–100, maior = pior que mais motoristas da frota
-  /** Ocorrências por faixa de velocidade (null quando a velocidade não se aplica, ex.: câmera obstruída). */
-  porVelocidade?: { ate40: number; de40a80: number; acima80: number } | null;
-  /** % das ocorrências da frota acima de 80 km/h, para comparação. */
-  acima80Frota?: number | null;
 }
 export interface VeiculoNoSinistro {
   checklist: { data: string; resultado: string; naoConformidades: string[] } | null;

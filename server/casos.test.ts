@@ -147,7 +147,7 @@ test('correção de evento: até 7 dias, guarda original e fica pendente de envi
   const c = svc.registrar(registro, [], ana, '2026-09-01T10:30');
   svc.salvarClassificacao(c.id, { real: EMPTY_DANOS, pot: { ...EMPTY_DANOS, pessoas: 3 }, justificativa: 'x' }, ana, true);
   const ev = svc.obter(c.id).dados!.eventos[0];
-  const alvo = ev.evento === 'Fadiga' ? 'Cigarro' : 'Fadiga';
+  const alvo = ev.evento === 'Fadiga' ? 'Distração' : 'Fadiga';
   const r = svc.corrigirEvento(c.id, ev.id, alvo, 'Revisado no vídeo', fernanda, '2026-09-05T09:00');
   assert.deepEqual([r.correcoes[0].original, r.correcoes[0].corrigido, r.correcoes[0].pendenteBase], [ev.evento, alvo, true]);
   assert.throws(() => svc.corrigirEvento(c.id, ev.id, 'Cigarro', 'x', fernanda, '2026-09-09T09:00'), /7 dias/);
