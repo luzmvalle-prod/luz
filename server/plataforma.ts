@@ -102,10 +102,9 @@ export function coletarDados(placa: string, dataHora: string, coletadoEm: string
     { origem: 'Telemetria', evento: 'Excesso de velocidade', detalhe: `Acima do limite do trecho` },
     { origem: 'Telemetria', evento: 'Frenagem brusca', detalhe: 'Desaceleração acima de 0,4 g' },
     { origem: 'Videotelemetria', evento: 'Uso de celular', detalhe: 'Câmera interna: celular na mão' },
-    { origem: 'Videotelemetria', evento: 'Distância insegura', detalhe: 'Câmera externa: menos de 2 s do veículo à frente' },
     { origem: 'Videotelemetria', evento: 'Fadiga', detalhe: 'Câmera interna: olhos fechados por 2 s' },
-    { origem: 'Videotelemetria', evento: 'Distração', detalhe: 'Câmera interna: olhar fora da via por 3 s' },
-    { origem: 'Telemetria', evento: 'Manobra brusca', detalhe: 'Guinada lateral' },
+    { origem: 'Videotelemetria', evento: 'Cigarro', detalhe: 'Câmera interna: cigarro na mão' },
+    { origem: 'Videotelemetria', evento: 'Sem cinto de segurança', detalhe: 'Câmera interna: cinto não afivelado' },
   ];
   const eventos: EventoPlataforma[] = [];
   const n = int(r, 3, 9);
@@ -174,18 +173,32 @@ const EVENTOS_HIST = ['Uso de celular', 'Câmera obstruída', 'Excesso de veloci
 const MEDIA_FROTA: Record<string, number> = { 'Uso de celular': 0.6, 'Câmera obstruída': 0.3, 'Excesso de velocidade': 0.8, 'Frenagem brusca': 0.5 };
 
 /** Ocorrências em 30 dias, normalizadas por 1.000 km e comparadas com a frota. */
-function historicoCom(ocorrencias: Record<string, number>, km30d: number): HistoricoMotorista[] {
+const ACIMA80_FROTA: Record<string, number | null> = { 'Uso de celular': 18, 'Câmera obstruída': null, 'Excesso de velocidade': 64, 'Frenagem brusca': 22 };
+type Faixas = { ate40: number; de40a80: number; acima80: number };
+
+/** Ocorrências em 30 dias, normalizadas por 1.000 km, cruzadas com a velocidade e comparadas com a frota. */
+function historicoCom(ocorrencias: Record<string, number>, km30d: number, faixas: Record<string, Faixas> = {}): HistoricoMotorista[] {
   return EVENTOS_HIST.map((evento) => {
     const oc = ocorrencias[evento] ?? 0;
     const por1000km = Math.round((oc / km30d) * 1000 * 100) / 100;
     const media = MEDIA_FROTA[evento];
     // Posição aproximada na frota a partir da razão com a média (simulação).
     const percentil = Math.max(1, Math.min(99, Math.round(50 + 35 * Math.tanh(Math.log((por1000km + 0.01) / media)))));
-    return { evento, ocorrencias: oc, por1000km, mediaFrota: media, percentil };
+    const temVel = ACIMA80_FROTA[evento] != null;
+    return { evento, ocorrencias: oc, por1000km, mediaFrota: media, percentil, porVelocidade: temVel ? (faixas[evento] ?? { ate40: oc, de40a80: 0, acima80: 0 }) : null, acima80Frota: ACIMA80_FROTA[evento] };
   });
 }
 function historico(r: () => number, km30d: number) {
-  return historicoCom(Object.fromEntries(EVENTOS_HIST.map((e) => [e, int(r, 0, 7)])), km30d);
+  const oc = Object.fromEntries(EVENTOS_HIST.map((e) => [e, int(r, 0, 7)]));
+  const faixas = Object.fromEntries(
+    EVENTOS_HIST.map((e) => {
+      const n = oc[e];
+      const acima80 = e === 'Excesso de velocidade' ? n : int(r, 0, n);
+      const de40a80 = int(r, 0, n - acima80);
+      return [e, { ate40: n - acima80 - de40a80, de40a80, acima80 }];
+    }),
+  );
+  return historicoCom(oc, km30d, faixas);
 }
 function veiculoGerado(r: () => number, dataHora: string): VeiculoNoSinistro {
   const dia = dataHora.slice(0, 10);
@@ -230,13 +243,16 @@ function fixtureRTB(coletadoEm: string): DadosColetados {
     eventos: [
       { id: 'ev-cam', horario: '05:48 → 07:42', origem: 'Videotelemetria', evento: 'Câmera interna obstruída', detalhe: 'Persistente desde o início da jornada', velocidade: null },
       { id: 'ev4', horario: '06:14:32', origem: 'Telemetria', evento: 'Frenagem brusca', detalhe: 'Desaceleração de 0,45 g', velocidade: 61 },
-      { id: 'ev5', horario: '06:51:07', origem: 'Videotelemetria', evento: 'Distância insegura', detalhe: 'Câmera externa: 1,4 s do veículo à frente', velocidade: 76 },
+      { id: 'ev5', horario: '06:51:07', origem: 'Videotelemetria', evento: 'Uso de celular', detalhe: 'Câmera interna: celular na mão', velocidade: 76 },
       { id: 'ev1', horario: '07:36:14', origem: 'Telemetria', evento: 'Excesso de velocidade', detalhe: '82 km/h em trecho de 80 km/h, por 40 s', velocidade: 82 },
       { id: 'ev2', horario: '07:41:58', origem: 'Videotelemetria', evento: 'Risco de colisão', detalhe: 'Câmera externa: veículos à frente reduzindo, sem frenagem', velocidade: 74 },
-      { id: 'ev3', horario: '07:42:04', origem: 'Telemetria', evento: 'Manobra brusca', detalhe: 'Guinada para o acostamento', velocidade: 71 },
     ],
     jornada: { inicio: '05:30', horasTrabalhadasMin: 132, direcaoContinuaMin: 132, interjornadaMin: 665 },
-    historico30d: historicoCom({ 'Uso de celular': 4, 'Câmera obstruída': 3, 'Excesso de velocidade': 2, 'Frenagem brusca': 1 }, 6420),
+    historico30d: historicoCom({ 'Uso de celular': 4, 'Câmera obstruída': 3, 'Excesso de velocidade': 2, 'Frenagem brusca': 1 }, 6420, {
+      'Uso de celular': { ate40: 1, de40a80: 1, acima80: 2 },
+      'Excesso de velocidade': { ate40: 0, de40a80: 0, acima80: 2 },
+      'Frenagem brusca': { ate40: 0, de40a80: 1, acima80: 0 },
+    }),
     km30d: 6420,
     veiculo: {
       checklist: { data: '2026-09-22T05:20', resultado: 'Aprovado com ressalva', naoConformidades: ['Câmera interna com obstrução parcial'] },

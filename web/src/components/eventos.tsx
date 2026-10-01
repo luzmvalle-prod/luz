@@ -241,6 +241,8 @@ export function HistoricoMotoristaTabela({ historico, km30d }: { historico: Hist
                 <th>Por 1.000 km</th>
                 <th>Média da frota</th>
                 <th>Posição na frota</th>
+                <th title="Ocorrências até 40 · de 40 a 80 · acima de 80 km/h">Por velocidade (km/h)</th>
+                <th>Acima de 80 km/h</th>
               </>
             )}
           </tr>
@@ -255,13 +257,59 @@ export function HistoricoMotoristaTabela({ historico, km30d }: { historico: Hist
                   <td style={{ fontWeight: 500 }}>{h.por1000km?.toLocaleString('pt-BR') ?? '—'}</td>
                   <td className="muted">{h.mediaFrota?.toLocaleString('pt-BR') ?? '—'}</td>
                   <td>{posicao(h.percentil)}</td>
+                  <td>
+                    <FaixasVelocidade f={h.porVelocidade} />
+                  </td>
+                  <td>
+                    <Acima80 h={h} />
+                  </td>
                 </>
               )}
             </tr>
           ))}
         </tbody>
       </table>
+      {temTaxa && (
+        <p className="hint">
+          Ocorrências por 1.000 km comparadas com a média da frota. A velocidade no momento do evento pesa: uso de celular a 20 km/h não é o mesmo que a 110 km/h, e acima de 80 km/h a
+          consequência de um acidente é muito maior.
+        </p>
+      )}
     </div>
+  );
+}
+
+function FaixasVelocidade({ f }: { f?: HistoricoMotorista['porVelocidade'] }) {
+  if (!f) return <span className="muted">não se aplica</span>;
+  const total = f.ate40 + f.de40a80 + f.acima80;
+  if (!total) return <span className="muted">—</span>;
+  const seg = (n: number, cor: string, label: string) =>
+    n > 0 && <span title={`${n} ${label}`} style={{ flex: n, background: cor, height: 8 }} />;
+  return (
+    <span className="stack" style={{ gap: 4, minWidth: 120 }}>
+      <span style={{ display: 'flex', gap: 2, borderRadius: 4, overflow: 'hidden' }}>
+        {seg(f.ate40, '#c9d3df', 'até 40 km/h')}
+        {seg(f.de40a80, '#f7b50f', 'de 40 a 80 km/h')}
+        {seg(f.acima80, '#ea0f33', 'acima de 80 km/h')}
+      </span>
+      <span className="sub">
+        {f.ate40} · {f.de40a80} · {f.acima80}
+      </span>
+    </span>
+  );
+}
+
+function Acima80({ h }: { h: HistoricoMotorista }) {
+  const f = h.porVelocidade;
+  if (!f || h.acima80Frota == null) return <span className="muted">—</span>;
+  const total = f.ate40 + f.de40a80 + f.acima80;
+  if (!total) return <span className="muted">—</span>;
+  const pct = Math.round((f.acima80 / total) * 100);
+  const pior = pct > h.acima80Frota;
+  return (
+    <span>
+      <span className={`pill ${pior ? 'danger' : 'ok'}`}>{pct}%</span> <span className="sub">frota {h.acima80Frota}%</span>
+    </span>
   );
 }
 

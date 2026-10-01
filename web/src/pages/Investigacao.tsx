@@ -260,28 +260,27 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
             <Field label="Causa raiz" htmlFor="causa">
               <textarea id="causa" className="textarea" rows={2} value={inv.causaRaiz} onChange={(e) => up({ causaRaiz: e.target.value })} />
             </Field>
-            <p className="hint">Passe o mouse sobre cada opção para ver quando usá-la.</p>
-            <div className="grid3">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.5fr', gap: 16, alignItems: 'start' }}>
               <div className="field">
                 <span className="label" style={{ fontSize: 12, color: 'var(--muted)' }}>
                   Grau de certeza da causa
                 </span>
                 <Seg<string> label="Grau de certeza" value={inv.certeza} options={CERTEZAS} dicas={dicas('certeza', CERTEZAS)} onChange={(v) => up({ certeza: v })} />
-                <p className="legenda">{legenda('certeza', inv.certeza)}</p>
+                <Legendas grupo="certeza" opcoes={CERTEZAS} valor={inv.certeza} />
               </div>
               <div className="field">
                 <span className="label" style={{ fontSize: 12, color: 'var(--muted)' }}>
                   Evitabilidade
                 </span>
                 <Seg<string> label="Evitabilidade" value={inv.evitabilidade} options={EVITABILIDADES} dicas={dicas('evitabilidade', EVITABILIDADES)} onChange={(v) => up({ evitabilidade: v })} />
-                <p className="legenda">{legenda('evitabilidade', inv.evitabilidade)}</p>
+                <Legendas grupo="evitabilidade" opcoes={EVITABILIDADES} valor={inv.evitabilidade} />
               </div>
               <div className="field">
                 <span className="label" style={{ fontSize: 12, color: 'var(--muted)' }}>
                   Responsabilidade legal
                 </span>
                 <Seg<string> label="Responsabilidade legal" value={inv.responsabilidade} options={RESPONSABILIDADES} dicas={dicas('responsabilidade', RESPONSABILIDADES)} onChange={(v) => up({ responsabilidade: v })} />
-                <p className="legenda">{legenda('responsabilidade', inv.responsabilidade)}</p>
+                <Legendas grupo="responsabilidade" opcoes={RESPONSABILIDADES} valor={inv.responsabilidade} />
               </div>
             </div>
           </Card>
@@ -420,6 +419,19 @@ function legenda(grupo: string, v: string) {
   if (!v) return 'Escolha uma opção.';
   return LEGENDAS[v === 'Inconclusiva' ? `Inconclusiva (${grupo})` : v] ?? '';
 }
+/** Descrição de todas as opções, sempre visível (como os critérios da classificação). */
+function Legendas({ grupo, opcoes, valor }: { grupo: string; opcoes: readonly string[]; valor: string }) {
+  return (
+    <ul className="legendas">
+      {opcoes.map((o) => (
+        <li key={o} className={o === valor ? 'on' : ''}>
+          <strong>{o}:</strong> {legenda(grupo, o)}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function dicas<T extends string>(grupo: string, opcoes: readonly T[]) {
   return Object.fromEntries(opcoes.map((o) => [o, legenda(grupo, o)])) as Partial<Record<T, string>>;
 }

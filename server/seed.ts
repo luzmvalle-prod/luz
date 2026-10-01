@@ -184,7 +184,7 @@ export function seed(db: DatabaseSync) {
     {
       comiteData: '2026-09-23',
       participantes: ['Fernanda Alves · Qualidade', 'Diego Nunes · Manutenção', 'Rafaela Costa · Sinistro'],
-      evidencias: ['ev-cam', 'ev1', 'ev2', 'ev3'],
+      evidencias: ['ev-cam', 'ev1', 'ev2'],
       constatado: 'Freio aprovado em teste. Na câmera externa, os veículos à frente reduzem e o nosso segue sem reduzir.',
       hipoteses: [
         { id: 'h1', tipo: 'Hipótese descartada', descricao: 'Falha mecânica no freio', evidencia: 'Laudo do teste de freio' },
