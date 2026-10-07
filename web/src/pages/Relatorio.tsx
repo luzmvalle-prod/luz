@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { DIMENSOES, ETAPA_LABEL, NIVEIS, STATUS_ACAO_LABEL, avaliarJornada, eventoCorrigido, origemDoNivel, tipoLabel } from '../../../shared/domain.ts';
 import { useCaso } from '../components/caso.tsx';
 import { Loading } from '../components/ui.tsx';
+import { ContextoResumo } from '../components/contexto.tsx';
 import { fmtData, fmtDataHora, fmtDuracao } from '../format.ts';
 
 /** Relatório consolidado do caso, pensado para "Imprimir → Salvar como PDF". */
@@ -44,6 +45,16 @@ export function Relatorio() {
             <dd>{c.local}</dd>
             <dt>Propriedade</dt>
             <dd>{c.propriedade === 'proprio' ? 'Própria da frota' : `De terceiro · ${c.terceiro?.proprietario ?? ''}`}</dd>
+            <dt>Vínculo do motorista</dt>
+            <dd>{c.vinculo || '—'}</dd>
+            {(c.operacao || c.rnc || c.bo) && (
+              <>
+                <dt>Operação · RNC · BO</dt>
+                <dd>
+                  {c.operacao || '—'} · {c.rnc || '—'} · {c.bo || '—'}
+                </dd>
+              </>
+            )}
             <dt>Condição da via</dt>
             <dd>{c.condicaoVia}</dd>
             <dt>Relato do motorista</dt>
@@ -97,6 +108,7 @@ export function Relatorio() {
           </table>
           <p className="help" style={{ marginTop: 8 }}>
             {NIVEIS[c.nivel]} pelo {origemDoNivel(c.classificacao)}. {c.classificacao.justificativa}
+            {c.classificacao.valorPrejuizo != null && ` Valor estimado do prejuízo: ${c.classificacao.valorPrejuizo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`}
           </p>
         </section>
 
@@ -145,6 +157,13 @@ export function Relatorio() {
                 {o}
               </p>
             ))}
+          </section>
+        )}
+
+        {(c.etapa === 'investigacao' || c.etapa === 'acompanhamento' || c.etapa === 'concluido') && (
+          <section>
+            <h2>Contexto do acidente</h2>
+            <ContextoResumo caso={c} />
           </section>
         )}
 

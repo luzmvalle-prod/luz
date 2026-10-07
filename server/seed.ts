@@ -157,6 +157,10 @@ export function seed(db: DatabaseSync) {
       tipo: 'Saída de pista',
       condicaoVia: 'Pista molhada',
       relato: 'Relatou falha no freio ao ligar para a manutenção.',
+      vinculo: 'Frota',
+      operacao: 'Distribuição Suape',
+      rnc: 'RNC-2026-031',
+      bo: '',
       envolvidos: [
         { nome: 'Carlos Menezes', papel: 'Motorista do veículo', veiculo: 'RTB-4E21', lesao: 'Sem lesão' },
         { nome: 'Não identificado', papel: 'Condutor de terceiro', veiculo: 'Carreta à frente, placa não registrada', lesao: 'Sem lesão' },
@@ -194,6 +198,11 @@ export function seed(db: DatabaseSync) {
         { id: 'h5', tipo: 'Fator · organização', descricao: 'Câmera interna obstruída sem alerta prévio', evidencia: 'Status da câmera' },
         { id: 'h6', tipo: 'Fator · organização', descricao: 'Comunicação chegou à manutenção, não ao setor de sinistro', evidencia: 'Relato do monitoramento' },
       ],
+      detalhes: {
+        jornadaObs: 'Fez a jornada dentro da lei, sem paradas desde as 05:30. Saída antecipada a pedido da operação.',
+        condutor: { condicaoFisica: ['Normal'], condicaoObs: '', historico: ['Punições'], historicoObs: 'Advertência em agosto por câmera obstruída.', cnh: '', validadeCnh: '', validadeToxicologico: '' },
+        via: { pista: ['Molhada'], pavimentacao: 'Boa', sinalizacao: 'Regular', contexto: ['Dia', 'Chuva'], rodovia: 'BR-101, km 72', concessionaria: '', faixas: '2' },
+      },
       causaRaiz: 'Provável distração do motorista.',
       certeza: 'Inconclusiva',
       evitabilidade: 'Evitável',

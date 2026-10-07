@@ -153,6 +153,20 @@ test('correção de evento: até 7 dias, guarda original e fica pendente de envi
   assert.throws(() => svc.corrigirEvento(c.id, ev.id, 'Cigarro', 'x', fernanda, '2026-09-09T09:00'), /7 dias/);
 });
 
+test('formulário Dellmar: vínculo, referências, detalhes opcionais e participantes opcionais', () => {
+  const svc = novo();
+  const c = svc.registrar({ ...registro, rnc: 'RNC-1', bo: 'BO-9', operacao: 'Suape' }, [], ana);
+  assert.deepEqual([c.vinculo, c.rnc, c.bo, c.operacao], ['Frota', 'RNC-1', 'BO-9', 'Suape']);
+  assert.ok(c.dados?.condutor?.cnh && c.dados.veiculo?.preventivas?.length === 2 && c.dados.periodos24h?.length, 'CNH, preventivas do cavalo e da carreta e 24 h vêm da plataforma');
+  svc.salvarClassificacao(c.id, { real: EMPTY_DANOS, pot: { ...EMPTY_DANOS, carga: 3 }, justificativa: 'x', valorPrejuizo: 35000 }, ana, true);
+  assert.equal(svc.obter(c.id).classificacao.valorPrejuizo, 35000);
+  const r = svc.salvarInvestigacao(c.id, { detalhes: { jornadaObs: 'Parou 4 vezes', condutor: { condicaoFisica: ['Cansaço', 'Inválido'] }, via: { pavimentacao: 'Ruim', pista: ['Seca'] } } as never }, ana);
+  assert.deepEqual(r.investigacao.detalhes?.condutor.condicaoFisica, ['Cansaço'], 'opções fora da lista são descartadas');
+  svc.criarAcao(c.id, { titulo: 'Treinar', responsavel: 'Fernanda Alves · Qualidade', prazo: '2026-12-01' }, fernanda);
+  const fim = svc.concluirInvestigacao(c.id, { causaRaiz: 'x', certeza: 'Provável', evitabilidade: 'Evitável', responsabilidade: 'Nosso condutor' }, fernanda);
+  assert.equal(fim.etapa, 'acompanhamento', 'conclui sem participantes do comitê');
+});
+
 test('mudança no plano após a investigação exige motivo e vai para o histórico', () => {
   const svc = novo();
   const rtb = svc.listar().find((c) => c.placa === 'RTB-4E21')!;

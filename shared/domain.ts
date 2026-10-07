@@ -22,7 +22,13 @@ export const CRITERIOS: Record<Dimensao, [string, string, string, string]> = {
   pessoas: ['Sem lesão ou primeiros socorros', 'Lesão com atendimento médico, sem afastamento', 'Lesão com afastamento', 'Óbito ou lesão permanente'],
   via: ['Sem interdição', 'Interdição parcial até 1 h', 'Interdição total ou parcial acima de 1 h', 'Interdição total acima de 4 h'],
   ambiente: ['Sem vazamento', 'Vazamento contido no local', 'Vazamento que atinge solo ou drenagem', 'Vazamento em corpo d’água ou área protegida'],
-  carga: ['Até R$ 5 mil', 'De R$ 5 mil a R$ 50 mil', 'De R$ 50 mil a R$ 200 mil', 'Acima de R$ 200 mil'],
+  // Pelo impacto na carga; o valor fica como referência secundária (o custo muda com o tempo).
+  carga: [
+    'Sem dano à carga (ou até R$ 5 mil)',
+    'Dano ao veículo ou implemento, sem dano à carga (ou R$ 5 mil a 50 mil)',
+    'Dano parcial à carga (ou R$ 50 mil a 200 mil)',
+    'Retrabalho, transbordo ou perda da carga (ou acima de R$ 200 mil)',
+  ],
 };
 
 export const TIPOS_SINISTRO = [
@@ -34,8 +40,18 @@ export const TIPOS_SINISTRO = [
   'Tombamento',
   'Atropelamento',
   'Choque com objeto fixo',
+  'Incêndio',
+  'Roubo / Furto',
   'Outro',
 ] as const;
+
+/** Vínculo do motorista com a empresa. */
+export const VINCULOS = ['Frota', 'Agregado', 'Terceiro'] as const;
+export const PISTA_CONDICOES = ['Seca', 'Molhada', 'Terra', 'Cascalho', 'Escorregadia', 'Outro'] as const;
+export const QUALIDADES = ['Boa', 'Regular', 'Ruim'] as const;
+export const CONTEXTOS_VIA = ['Dia', 'Noite', 'Chuva', 'Neblina', 'Curva acentuada', 'Aclive / declive'] as const;
+export const CONDICOES_FISICAS = ['Normal', 'Cansaço', 'Sonolência', 'Doença', 'Estresse', 'Outro'] as const;
+export const HISTORICO_ITENS = ['Multas', 'Punições', 'Incidentes', 'Elogios'] as const;
 
 export const CONDICOES_VIA = ['Pista seca', 'Pista molhada', 'Neblina', 'Obras na via', 'Iluminação precária', 'Não informada'] as const;
 
@@ -83,6 +99,7 @@ export const TIPOS_EVENTO = [
   'Risco de colisão',
   'Capotamento',
   'Câmera obstruída',
+  'Sem cinto de segurança',
   'Falso positivo',
 ] as const;
 
@@ -138,6 +155,8 @@ export interface Classificacao {
   pot: Danos;
   justificativa: string;
   confirmada: boolean;
+  /** Valor estimado do prejuízo, só como registro (opcional). */
+  valorPrejuizo?: number | null;
 }
 
 export interface Hipotese {
@@ -158,7 +177,45 @@ export interface Investigacao {
   evitabilidade: string;
   responsabilidade: string;
   rascunhoSalvoEm: string | null;
+  detalhes?: DetalhesInvestigacao;
 }
+
+/** Blocos opcionais da investigação (formulário da Dellmar). */
+export interface DetalhesInvestigacao {
+  jornadaObs: string;
+  condutor: {
+    condicaoFisica: string[];
+    condicaoObs: string;
+    historico: string[];
+    historicoObs: string;
+    // Preenchidos à mão quando não vêm da plataforma (ex.: veículo de terceiro).
+    cnh: string;
+    validadeCnh: string;
+    validadeToxicologico: string;
+  };
+  via: {
+    pista: string[];
+    pavimentacao: string;
+    sinalizacao: string;
+    contexto: string[];
+    rodovia: string;
+    concessionaria: string;
+    faixas: string;
+  };
+}
+
+export const EMPTY_DETALHES: DetalhesInvestigacao = {
+  jornadaObs: '',
+  condutor: { condicaoFisica: [], condicaoObs: '', historico: [], historicoObs: '', cnh: '', validadeCnh: '', validadeToxicologico: '' },
+  via: { pista: [], pavimentacao: '', sinalizacao: '', contexto: [], rodovia: '', concessionaria: '', faixas: '' },
+};
+
+export const detalhesDe = (inv: Pick<Investigacao, 'detalhes'>): DetalhesInvestigacao => ({
+  ...EMPTY_DETALHES,
+  ...inv.detalhes,
+  condutor: { ...EMPTY_DETALHES.condutor, ...inv.detalhes?.condutor },
+  via: { ...EMPTY_DETALHES.via, ...inv.detalhes?.via },
+});
 
 export interface ItemColetado {
   campo: string;
@@ -196,6 +253,9 @@ export interface HistoricoMotorista {
   percentil?: number; // 0–100, maior = pior que mais motoristas da frota
 }
 export interface VeiculoNoSinistro {
+  cadastro?: { marca: string; modelo: string; ano: number };
+  /** Última manutenção preventiva do cavalo e da carreta. */
+  preventivas?: { papel: 'Cavalo' | 'Carreta' | 'Veículo'; placa: string; data: string; km: number }[];
   checklist: { data: string; resultado: string; naoConformidades: string[] } | null;
   manutencoesVencidas: { item: string; venceuEm: string }[];
 }
@@ -214,6 +274,10 @@ export interface DadosColetados {
   historico30d: HistoricoMotorista[];
   km30d?: number;
   veiculo?: VeiculoNoSinistro;
+  /** Cadastro do motorista em Minha frota. */
+  condutor?: { cnh: string; validadeCnh: string; validadeToxicologico: string };
+  /** Direção, paradas e descanso nas 24 h antes do sinistro. */
+  periodos24h?: { tipo: 'Direção' | 'Parada' | 'Descanso'; inicio: string; fim: string; duracaoMin: number }[];
   observacoes: string[];
 }
 
@@ -272,6 +336,11 @@ export interface Caso {
   tipoOutro: string;
   condicaoVia: string;
   relato: string;
+  vinculo: string;
+  rnc: string;
+  bo: string;
+  operacao: string;
+  sinistrosAnteriores: { id: string; dataHora: string; tipo: string; tipoOutro: string; nivel: Nivel }[];
   envolvidos: Envolvido[];
   etapa: Etapa;
   nivel: Nivel;
@@ -357,7 +426,6 @@ export const EMPTY_INVESTIGACAO: Investigacao = {
 export function pendenciasInvestigacao(inv: Investigacao, acoes: Pick<Acao, 'titulo' | 'responsavel' | 'prazo'>[]): string[] {
   const p: string[] = [];
   if (!inv.comiteData) p.push('Informe a data da análise do comitê');
-  if (inv.participantes.length === 0) p.push('Informe os participantes do comitê');
   if (!inv.causaRaiz.trim()) p.push('Descreva a causa raiz');
   if (!inv.certeza) p.push('Escolha o grau de certeza da causa');
   if (!inv.evitabilidade) p.push('Escolha a evitabilidade');
@@ -402,3 +470,22 @@ export const podeCorrigirEvento = (dataHoraSinistro: string, hoje: string) => di
 /** Maior nível de dano a pessoas indicado pelas lesões dos envolvidos. */
 export const nivelPelasLesoes = (envolvidos: Pick<Envolvido, 'lesao'>[]): Nivel =>
   Math.max(0, ...envolvidos.map((e) => LESAO_NIVEL_MIN[e.lesao] ?? 0)) as Nivel;
+
+/** Resumo da telemetria da viagem, considerando as correções de eventos. */
+export function resumoTelemetria(eventos: EventoPlataforma[], correcoes: CorrecaoEvento[] = []) {
+  const nomes = eventos.map((e) => eventoCorrigido(correcoes, e.id)?.corrigido ?? e.evento);
+  const tem = (n: string) => nomes.includes(n);
+  const vels = eventos.map((e) => e.velocidade).filter((v): v is number => typeof v === 'number');
+  return {
+    velocidadeMaxima: vels.length ? Math.max(...vels) : null,
+    picosVelocidade: nomes.filter((n) => n === 'Excesso de velocidade').length,
+    frenagensBruscas: nomes.filter((n) => n === 'Frenagem brusca').length,
+    distracao: tem('Distração'),
+    celular: tem('Uso de celular'),
+    fadiga: tem('Fadiga'),
+    semCinto: tem('Sem cinto de segurança'),
+  };
+}
+
+/** true quando a validade (YYYY-MM-DD) já tinha passado na data do sinistro. */
+export const vencidaEm = (validade: string, dataHora: string) => !!validade && validade < dataHora.slice(0, 10);

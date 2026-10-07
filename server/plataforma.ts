@@ -9,19 +9,22 @@ export interface Veiculo {
   placa: string;
   modelo: string;
   categoria: string;
+  ano: number;
+  /** Placa da carreta engatada (conjuntos cavalo + carreta). */
+  carreta?: string;
   unidade: string;
   motorista: string;
 }
 
 export const FROTA: Veiculo[] = [
-  { placa: 'RTB-4E21', modelo: 'Scania R 450', categoria: 'Carreta', unidade: 'Recife', motorista: 'Carlos Menezes' },
-  { placa: 'KTR-1A66', modelo: 'Mercedes Atego 2430', categoria: 'Truck', unidade: 'Recife', motorista: 'Paulo Andrade' },
-  { placa: 'QPX-7H09', modelo: 'Volvo FH 540', categoria: 'Carreta', unidade: 'Cabo de Santo Agostinho', motorista: 'José Ferreira' },
-  { placa: 'SGD-2B83', modelo: 'Scania R 450', categoria: 'Carreta', unidade: 'Recife', motorista: 'Antônio Ribeiro' },
-  { placa: 'PNV-5C47', modelo: 'VW Delivery 11.180', categoria: 'Toco', unidade: 'Jaboatão', motorista: 'Marcos Lima' },
-  { placa: 'MHL-8D32', modelo: 'Volvo FH 460', categoria: 'Carreta', unidade: 'Cabo de Santo Agostinho', motorista: 'Severino Batista' },
-  { placa: 'JVC-3K57', modelo: 'Mercedes Actros 2651', categoria: 'Carreta', unidade: 'Recife', motorista: 'Luiz Carvalho' },
-  { placa: 'OFA-6G14', modelo: 'VW Constellation 24.280', categoria: 'Truck', unidade: 'Jaboatão', motorista: 'Rogério Santos' },
+  { placa: 'RTB-4E21', modelo: 'Scania R 450', categoria: 'Carreta', unidade: 'Recife', motorista: 'Carlos Menezes', ano: 2021, carreta: 'RTC-9B12' },
+  { placa: 'KTR-1A66', modelo: 'Mercedes Atego 2430', categoria: 'Truck', unidade: 'Recife', motorista: 'Paulo Andrade', ano: 2019 },
+  { placa: 'QPX-7H09', modelo: 'Volvo FH 540', categoria: 'Carreta', unidade: 'Cabo de Santo Agostinho', motorista: 'José Ferreira', ano: 2022, carreta: 'QPY-2D45' },
+  { placa: 'SGD-2B83', modelo: 'Scania R 450', categoria: 'Carreta', unidade: 'Recife', motorista: 'Antônio Ribeiro', ano: 2020, carreta: 'SGE-7F30' },
+  { placa: 'PNV-5C47', modelo: 'VW Delivery 11.180', categoria: 'Toco', unidade: 'Jaboatão', motorista: 'Marcos Lima', ano: 2018 },
+  { placa: 'MHL-8D32', modelo: 'Volvo FH 460', categoria: 'Carreta', unidade: 'Cabo de Santo Agostinho', motorista: 'Severino Batista', ano: 2023, carreta: 'MHM-4C88' },
+  { placa: 'JVC-3K57', modelo: 'Mercedes Actros 2651', categoria: 'Carreta', unidade: 'Recife', motorista: 'Luiz Carvalho', ano: 2022, carreta: 'JVD-1H09' },
+  { placa: 'OFA-6G14', modelo: 'VW Constellation 24.280', categoria: 'Truck', unidade: 'Jaboatão', motorista: 'Rogério Santos', ano: 2021 },
 ];
 
 const LOCAIS = [
@@ -106,6 +109,7 @@ export function coletarDados(placa: string, dataHora: string, coletadoEm: string
     { origem: 'Videotelemetria', evento: 'Fadiga', detalhe: 'Câmera interna: olhos fechados por 2 s' },
     { origem: 'Videotelemetria', evento: 'Distração', detalhe: 'Câmera interna: olhar fora da via por 3 s' },
     { origem: 'Telemetria', evento: 'Manobra brusca', detalhe: 'Guinada lateral' },
+    { origem: 'Videotelemetria', evento: 'Sem cinto de segurança', detalhe: 'Câmera interna: cinto não afivelado' },
   ];
   const eventos: EventoPlataforma[] = [];
   const n = int(r, 3, 9);
@@ -165,7 +169,9 @@ export function coletarDados(placa: string, dataHora: string, coletadoEm: string
     jornada,
     historico30d: historico(r, km30d),
     km30d,
-    veiculo: veiculoGerado(r, dataHora),
+    veiculo: { ...veiculoGerado(r, dataHora), ...cadastroVeiculo(v, dataHora) },
+    condutor: cadastroMotorista(v.motorista, dataHora),
+    periodos24h: periodos24h(v.placa + dataHora, dataHora, jornada),
     observacoes,
   };
 }
@@ -187,6 +193,72 @@ function historicoCom(ocorrencias: Record<string, number>, km30d: number): Histo
 function historico(r: () => number, km30d: number) {
   return historicoCom(Object.fromEntries(EVENTOS_HIST.map((e) => [e, int(r, 0, 7)])), km30d);
 }
+const MARCAS: Record<string, string> = { Scania: 'Scania', Mercedes: 'Mercedes-Benz', Volvo: 'Volvo', VW: 'Volkswagen' };
+const diasAntes = (dataHora: string, dias: number) => new Date(Date.parse(dataHora.slice(0, 10)) - dias * 86400000).toISOString().slice(0, 10);
+
+/** Cadastro do veículo e última preventiva do cavalo e da carreta (Minha frota + Manutenção). */
+function cadastroVeiculo(v: Veiculo, dataHora: string): Pick<VeiculoNoSinistro, 'cadastro' | 'preventivas'> {
+  const [marca, ...resto] = v.modelo.split(' ');
+  const r = rng('prev' + v.placa + dataHora.slice(0, 10));
+  const preventivas: NonNullable<VeiculoNoSinistro['preventivas']> = [
+    { papel: v.carreta ? 'Cavalo' : 'Veículo', placa: v.placa, data: diasAntes(dataHora, int(r, 10, 110)), km: int(r, 90, 480) * 1000 + int(r, 0, 999) },
+  ];
+  if (v.carreta) preventivas.push({ papel: 'Carreta', placa: v.carreta, data: diasAntes(dataHora, int(r, 20, 200)), km: int(r, 60, 400) * 1000 + int(r, 0, 999) });
+  return { cadastro: { marca: MARCAS[marca] ?? marca, modelo: resto.join(' '), ano: v.ano }, preventivas };
+}
+
+/** CNH e exame toxicológico do motorista (cadastro em Minha frota). */
+export function cadastroMotorista(nome: string, dataHora: string): DadosColetados['condutor'] {
+  const r = rng('cnh' + nome);
+  const cnh = String(int(r, 10000000, 99999999)) + String(int(r, 100, 999));
+  // Alguns cadastros vencidos para exercitar o aviso.
+  const vencida = nome === 'Antônio Ribeiro';
+  return {
+    cnh,
+    validadeCnh: new Date(Date.parse(dataHora.slice(0, 10)) + int(r, 120, 1400) * 86400000).toISOString().slice(0, 10),
+    validadeToxicologico: vencida ? diasAntes(dataHora, 18) : new Date(Date.parse(dataHora.slice(0, 10)) + int(r, 30, 700) * 86400000).toISOString().slice(0, 10),
+  };
+}
+
+/** Direção, paradas e descanso nas 24 h antes do sinistro (telemetria de jornada). */
+function periodos24h(seed: string, dataHora: string, j: Jornada): NonNullable<DadosColetados['periodos24h']> {
+  const r = rng('p24' + seed);
+  const fim = Date.parse(dataHora + ':00Z');
+  const iso = (t: number) => new Date(t).toISOString().slice(0, 16);
+  const out: NonNullable<DadosColetados['periodos24h']> = [];
+  const add = (tipo: 'Direção' | 'Parada' | 'Descanso', a: number, b: number) => {
+    if (b <= a) return;
+    const ult = out.at(-1);
+    // Trechos seguidos do mesmo tipo viram um só.
+    if (ult && ult.tipo === tipo && ult.fim === iso(a)) {
+      ult.fim = iso(b);
+      ult.duracaoMin = Math.round((b - Date.parse(ult.inicio + ':00Z')) / 60000);
+    } else out.push({ tipo, inicio: iso(a), fim: iso(b), duracaoMin: Math.round((b - a) / 60000) });
+  };
+  // Alterna direção e paradas curtas entre a e b; o último trecho de direção tem `ultimo` minutos.
+  const picotar = (a: number, b: number, ultimo: number) => {
+    const fimLivre = b - ultimo * 60000;
+    let t = a;
+    while (fimLivre - t > 20 * 60000) {
+      const dir = Math.min(int(r, 20, 130) * 60000, fimLivre - t);
+      add('Direção', t, t + dir);
+      t += dir;
+      if (fimLivre - t <= 5 * 60000) break;
+      const par = Math.min(int(r, 8, 35) * 60000, fimLivre - t);
+      add('Parada', t, t + par);
+      t += par;
+    }
+    add('Direção', t, b);
+  };
+  const inicioJornada = fim - j.horasTrabalhadasMin * 60000;
+  const inicioDescanso = inicioJornada - j.interjornadaMin * 60000;
+  const janela = fim - 24 * 3600000;
+  if (inicioDescanso > janela) picotar(janela, inicioDescanso, int(r, 30, 90));
+  add('Descanso', Math.max(janela, inicioDescanso), inicioJornada);
+  picotar(inicioJornada, fim, j.direcaoContinuaMin);
+  return out;
+}
+
 function veiculoGerado(r: () => number, dataHora: string): VeiculoNoSinistro {
   const dia = dataHora.slice(0, 10);
   const nc = ['Pneu dianteiro com desgaste', 'Luz de freio queimada', 'Retrovisor direito solto', 'Câmera interna com obstrução parcial'];
@@ -238,7 +310,10 @@ function fixtureRTB(coletadoEm: string): DadosColetados {
     jornada: { inicio: '05:30', horasTrabalhadasMin: 132, direcaoContinuaMin: 132, interjornadaMin: 665 },
     historico30d: historicoCom({ 'Uso de celular': 4, 'Câmera obstruída': 3, 'Excesso de velocidade': 2, 'Frenagem brusca': 1 }, 6420),
     km30d: 6420,
+    condutor: cadastroMotorista('Carlos Menezes', '2026-09-22T07:42'),
+    periodos24h: periodos24h('RTB-4E21', '2026-09-22T07:42', { inicio: '05:30', horasTrabalhadasMin: 132, direcaoContinuaMin: 132, interjornadaMin: 665 }),
     veiculo: {
+      ...cadastroVeiculo(veiculo('RTB-4E21')!, '2026-09-22T07:42'),
       checklist: { data: '2026-09-22T05:20', resultado: 'Aprovado com ressalva', naoConformidades: ['Câmera interna com obstrução parcial'] },
       manutencoesVencidas: [],
     },

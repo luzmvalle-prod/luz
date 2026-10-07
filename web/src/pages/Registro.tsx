@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { CONDICOES_VIA, LESOES, PAPEIS_ENVOLVIDO, TIPOS_SINISTRO, type Anexo, type Envolvido, type Propriedade } from '../../../shared/domain.ts';
+import { CONDICOES_VIA, LESOES, PAPEIS_ENVOLVIDO, TIPOS_SINISTRO, VINCULOS, type Anexo, type Envolvido, type Propriedade } from '../../../shared/domain.ts';
 import { ApiError, api } from '../api.ts';
 import { AnexoItem, Card, ErrosNote, Field, FileButton, Loading, Modal, PageHeader, Seg, Shell, Stepper, useToast } from '../components/ui.tsx';
 import { fmtBytes, fmtDataHora, rotaDaEtapa } from '../format.ts';
@@ -34,6 +34,10 @@ export function Registro() {
   const [documento, setDocumento] = useState('');
   const [cnh, setCnh] = useState('');
   const [modelo, setModelo] = useState('');
+  const [vinculo, setVinculo] = useState('');
+  const [rnc, setRnc] = useState('');
+  const [bo, setBo] = useState('');
+  const [operacao, setOperacao] = useState('');
   const [lesaoMotorista, setLesaoMotorista] = useState('Sem lesão');
   const [outros, setOutros] = useState<Envolvido[]>([]);
   const [relato, setRelato] = useState('');
@@ -63,6 +67,10 @@ export function Registro() {
         setTipo(c.tipo);
         setTipoOutro(c.tipoOutro);
         setCondicaoVia(c.condicaoVia);
+        setVinculo(c.vinculo);
+        setRnc(c.rnc);
+        setBo(c.bo);
+        setOperacao(c.operacao);
         setRelato(c.relato);
         if (c.terceiro) {
           setProprietario(c.terceiro.proprietario);
@@ -106,6 +114,9 @@ export function Registro() {
     };
   }, [prop, veiculo, dataHora]);
 
+  // Sem escolha explícita, o vínculo acompanha a propriedade do veículo.
+  const vinculoEfetivo = vinculo || (prop === 'terceiro' ? 'Terceiro' : 'Frota');
+
   const envolvidos: Envolvido[] = [
     { nome: motorista.trim() || 'Motorista', papel: 'Motorista do veículo', veiculo: placa.trim().toUpperCase(), lesao: lesaoMotorista },
     ...outros,
@@ -122,6 +133,10 @@ export function Registro() {
       local,
       tipo,
       tipoOutro: tipo === 'Outro' ? tipoOutro : '',
+      vinculo: vinculoEfetivo,
+      rnc,
+      bo,
+      operacao,
       condicaoVia,
       relato,
       envolvidos,
@@ -307,6 +322,25 @@ export function Registro() {
                 <div className="note">Veículo sem equipamento INFLEET. Telemetria, vídeo e jornada não serão puxados automaticamente: anexe o que o proprietário fornecer.</div>
               </>
             )}
+            <div className="grid3">
+              <Field label="Vínculo do motorista" htmlFor="vinculo">
+                <select id="vinculo" className="select" value={vinculoEfetivo} onChange={(e) => setVinculo(e.target.value)}>
+                  {VINCULOS.map((v) => (
+                    <option key={v}>{v}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Operação (opcional)" htmlFor="operacao">
+                <input id="operacao" className="input" placeholder="Contrato ou cliente atendido" value={operacao} onChange={(e) => setOperacao(e.target.value)} />
+              </Field>
+              <span />
+              <Field label="Nº da RNC (opcional)" htmlFor="rnc">
+                <input id="rnc" className="input" placeholder="Registro de não conformidade" value={rnc} onChange={(e) => setRnc(e.target.value)} />
+              </Field>
+              <Field label="Nº do BO (opcional)" htmlFor="bo">
+                <input id="bo" className="input" placeholder="Boletim de ocorrência" value={bo} onChange={(e) => setBo(e.target.value)} />
+              </Field>
+            </div>
           </Card>
 
           <Card title="Envolvidos">

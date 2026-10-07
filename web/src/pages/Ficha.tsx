@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { CONDICOES_VIA, DIMENSOES, ETAPA_LABEL, LESOES, NIVEIS, TIPOS_SINISTRO, diasDesde, nivelPelasLesoes, origemDoNivel, tipoLabel, type Caso } from '../../../shared/domain.ts';
+import { CONDICOES_VIA, DIMENSOES, ETAPA_LABEL, LESOES, NIVEIS, TIPOS_SINISTRO, VINCULOS, diasDesde, nivelPelasLesoes, origemDoNivel, tipoLabel, type Caso } from '../../../shared/domain.ts';
 import { EventosTabela, HistoricoMotoristaTabela, VeiculoBloco } from '../components/eventos.tsx';
+import { ContextoResumo, Periodos24h, ResumoTelemetria } from '../components/contexto.tsx';
 import { api } from '../api.ts';
 import { CasoGate, CasoHeader, useCaso, useMutacao } from '../components/caso.tsx';
 import { AnexoItem, Card, Field, Modal, useToast } from '../components/ui.tsx';
@@ -111,7 +112,20 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
                   {caso.placa} · {caso.modelo} · {caso.categoria}
                 </dd>
                 <dt>Motorista</dt>
-                <dd>{caso.motorista}</dd>
+                <dd>
+                  {caso.motorista}
+                  {caso.vinculo && <span className="muted"> · {caso.vinculo}</span>}
+                </dd>
+                {(caso.operacao || caso.rnc || caso.bo) && (
+                  <>
+                    <dt>Operação</dt>
+                    <dd>{caso.operacao || '—'}</dd>
+                    <dt>Nº da RNC · Nº do BO</dt>
+                    <dd>
+                      {caso.rnc || '—'} · {caso.bo || '—'}
+                    </dd>
+                  </>
+                )}
                 <dt>Propriedade</dt>
                 <dd>{caso.propriedade === 'proprio' ? 'Própria da frota' : 'De terceiro'}</dd>
                 {caso.terceiro && (
@@ -164,6 +178,9 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
                   {caso.classificacao.justificativa && `: ${caso.classificacao.justificativa}`}
                   {!caso.classificacao.confirmada && ' (rascunho, ainda não confirmada)'}
                 </div>
+                {caso.classificacao.valorPrejuizo != null && (
+                  <p className="hint">Valor estimado do prejuízo: {caso.classificacao.valorPrejuizo.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+                )}
               </Card>
               <Card
                 title="Envolvidos"
@@ -342,9 +359,11 @@ export function DadosTab({ caso, onCorrigir }: { caso: Caso; onCorrigir?: (event
       </table>
       <div className="stack" style={{ gap: 8 }}>
         <h3 style={{ fontSize: 14, fontWeight: 600 }}>Eventos da viagem</h3>
+        <ResumoTelemetria caso={caso} />
         <EventosTabela caso={caso} onCorrigir={onCorrigir} />
       </div>
       {d.jornada && <JornadaTabela jornada={d.jornada} />}
+      <Periodos24h periodos={d.periodos24h} />
       <HistoricoMotoristaTabela historico={d.historico30d} km30d={d.km30d} />
       <VeiculoBloco veiculo={d.veiculo} />
       {d.observacoes.map((o) => (
@@ -434,6 +453,9 @@ export function InvestTab({ caso }: { caso: Caso }) {
             <dd>{fmtData(inv.comiteData)}</dd>
           </dl>
         </Card>
+        <Card title="Contexto do acidente">
+          <ContextoResumo caso={caso} />
+        </Card>
         <Card title="Evidências marcadas">
           {evidencias.length === 0 ? (
             <span className="hint">Nenhum evento marcado como evidência.</span>
@@ -454,7 +476,7 @@ export function InvestTab({ caso }: { caso: Caso }) {
 }
 
 function EditarModal({ caso, onClose, onSave }: { caso: Caso; onClose: () => void; onSave: (patch: object, motivo: string) => void }) {
-  const [p, setP] = useState({ motorista: caso.motorista, local: caso.local, tipo: caso.tipo, tipoOutro: caso.tipoOutro, condicaoVia: caso.condicaoVia, dataHora: caso.dataHora, relato: caso.relato });
+  const [p, setP] = useState({ vinculo: caso.vinculo, operacao: caso.operacao, rnc: caso.rnc, bo: caso.bo, motorista: caso.motorista, local: caso.local, tipo: caso.tipo, tipoOutro: caso.tipoOutro, condicaoVia: caso.condicaoVia, dataHora: caso.dataHora, relato: caso.relato });
   const [motivo, setMotivo] = useState('');
   return (
     <Modal
@@ -497,6 +519,24 @@ function EditarModal({ caso, onClose, onSave }: { caso: Caso; onClose: () => voi
               <option key={t}>{t}</option>
             ))}
           </select>
+        </Field>
+      </div>
+      <div className="grid2">
+        <Field label="Vínculo do motorista" htmlFor="ed-vinc">
+          <select id="ed-vinc" className="select" value={p.vinculo} onChange={(e) => setP({ ...p, vinculo: e.target.value })}>
+            {VINCULOS.map((v) => (
+              <option key={v}>{v}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Operação" htmlFor="ed-op">
+          <input id="ed-op" className="input" value={p.operacao} onChange={(e) => setP({ ...p, operacao: e.target.value })} />
+        </Field>
+        <Field label="Nº da RNC" htmlFor="ed-rnc">
+          <input id="ed-rnc" className="input" value={p.rnc} onChange={(e) => setP({ ...p, rnc: e.target.value })} />
+        </Field>
+        <Field label="Nº do BO" htmlFor="ed-bo">
+          <input id="ed-bo" className="input" value={p.bo} onChange={(e) => setP({ ...p, bo: e.target.value })} />
         </Field>
       </div>
       <Field label="Local" htmlFor="ed-local">

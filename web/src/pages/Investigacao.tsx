@@ -8,6 +8,7 @@ import {
   RESPONSABILIDADES,
   TIPOS_HIPOTESE,
   avaliarJornada,
+  detalhesDe,
   eventoCorrigido,
   pendenciasInvestigacao,
   type Acao,
@@ -18,6 +19,7 @@ import {
 import { api } from '../api.ts';
 import { AcaoModal } from '../components/acao.tsx';
 import { EventosTabela, HistoricoMotoristaTabela, VeiculoBloco } from '../components/eventos.tsx';
+import { ContextoBlocos, Periodos24h, ResumoTelemetria } from '../components/contexto.tsx';
 import { CasoGate, CasoHeader, useCaso, useMutacao } from '../components/caso.tsx';
 import { AnexoItem, Card, ErrosNote, Field, FileButton, Modal, Seg, useUsuario } from '../components/ui.tsx';
 import { fmtData, fmtDataHora, fmtDuracao } from '../format.ts';
@@ -45,6 +47,7 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
   const invRef = useRef(inv);
   invRef.current = inv;
 
+  const detalhes = detalhesDe(inv);
   const up = (patch: Partial<Investigacao>) => {
     setInv((i) => ({ ...i, ...patch }));
     setSujo(true);
@@ -171,6 +174,7 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
             ) : (
               <>
                 <p className="help">Eventos da viagem inteira, do início da jornada até o sinistro, já registrados pela INFLEET. Marque o que entra como evidência do caso.</p>
+                <ResumoTelemetria caso={caso} />
                 <EventosTabela
                   caso={caso}
                   selecionados={inv.evidencias}
@@ -178,6 +182,7 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
                   onCorrigir={async (eventoId, corrigido, motivo) => !!(await run(() => api.corrigirEvento(caso.id, eventoId, corrigido, motivo), 'Evento corrigido'))}
                 />
                 {d.jornada && <JornadaTabela jornada={d.jornada} />}
+                <Periodos24h periodos={d.periodos24h} />
                 <HistoricoMotoristaTabela historico={d.historico30d} km30d={d.km30d} />
                 <VeiculoBloco veiculo={d.veiculo} />
               </>
@@ -196,7 +201,21 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
             </div>
           </Card>
 
-          <Card n={3} title="Relato e constatação">
+          <Card n={3} title="Contexto do acidente" right={<span className="hint">opcional</span>}>
+            <Field label="Observações sobre a jornada" htmlFor="jornada-obs">
+              <textarea
+                id="jornada-obs"
+                className="textarea"
+                rows={3}
+                value={detalhes.jornadaObs}
+                onChange={(e) => up({ detalhes: { ...detalhes, jornadaObs: e.target.value } })}
+                placeholder="Ex.: fez a jornada da lei, mas parou várias vezes (1 h dirigindo e 10 min parado); dirigiu 1 h a mais a pedido da empresa"
+              />
+            </Field>
+            <ContextoBlocos caso={caso} detalhes={detalhes} onChange={(x) => up({ detalhes: x })} />
+          </Card>
+
+          <Card n={4} title="Relato e constatação">
             <p className="help">Compare o que foi dito com o que a evidência mostra.</p>
             <div className="compare">
               <div>
@@ -212,7 +231,7 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
             </div>
           </Card>
 
-          <Card n={4} title="Hipóteses e fatores contribuintes">
+          <Card n={5} title="Hipóteses e fatores contribuintes">
             <table className="table flush">
               <thead>
                 <tr>
@@ -256,7 +275,7 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
             </div>
           </Card>
 
-          <Card n={5} title="Conclusão">
+          <Card n={6} title="Conclusão">
             <Field label="Causa raiz" htmlFor="causa">
               <textarea id="causa" className="textarea" rows={2} value={inv.causaRaiz} onChange={(e) => up({ causaRaiz: e.target.value })} />
             </Field>
@@ -286,7 +305,7 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
             </div>
           </Card>
 
-          <Card n={6} title="Plano de ação">
+          <Card n={7} title="Plano de ação">
             <p className="help">Cada ação precisa de responsável e prazo. A evidência é anexada na próxima etapa.</p>
             <table className="table flush">
               <thead>

@@ -32,10 +32,11 @@ export function ClassificacaoPage() {
 function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
   const nav = useNavigate();
   const { run, ocupado } = useMutacao(setCaso);
-  const [cls, setCls] = useState<Pick<Classificacao, 'real' | 'pot' | 'justificativa'>>(() => ({
+  const [cls, setCls] = useState<Pick<Classificacao, 'real' | 'pot' | 'justificativa' | 'valorPrejuizo'>>(() => ({
     real: caso.classificacao.real,
     pot: caso.classificacao.pot,
     justificativa: caso.classificacao.justificativa,
+    valorPrejuizo: caso.classificacao.valorPrejuizo ?? null,
   }));
   const [salvo, setSalvo] = useState(true);
   const primeira = useRef(true);
@@ -107,6 +108,19 @@ function Tela({ caso, setCaso }: { caso: Caso; setCaso: (c: Caso) => void }) {
               ))}
             </div>
             <p className="hint">O dano potencial nunca é menor que o real: ao subir o real, o potencial acompanha. Critérios de cada nível configurados pelo cliente.</p>
+            <Field label="Valor estimado do prejuízo, R$ (opcional, só como registro)" htmlFor="valor">
+              <input
+                id="valor"
+                className="input"
+                style={{ maxWidth: 240 }}
+                type="number"
+                min={0}
+                step={100}
+                placeholder="Ex.: 35000"
+                value={cls.valorPrejuizo ?? ''}
+                onChange={(e) => setCls({ ...cls, valorPrejuizo: e.target.value === '' ? null : Number(e.target.value) })}
+              />
+            </Field>
             <Field label="Justificativa do potencial" htmlFor="just">
               <textarea
                 id="just"

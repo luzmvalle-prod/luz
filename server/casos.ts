@@ -9,6 +9,13 @@ import {
   EMPTY_DANOS,
   EMPTY_INVESTIGACAO,
   EVITABILIDADES,
+  CONDICOES_FISICAS,
+  CONTEXTOS_VIA,
+  EMPTY_DETALHES,
+  HISTORICO_ITENS,
+  PISTA_CONDICOES,
+  QUALIDADES,
+  VINCULOS,
   LESOES,
   PRAZO_CORRECAO_DIAS,
   TIPOS_EVENTO,
@@ -32,6 +39,7 @@ import {
   type CorrecaoEvento,
   type Danos,
   type DadosColetados,
+  type DetalhesInvestigacao,
   type DadosTerceiro,
   type Envolvido,
   type Etapa,
@@ -118,6 +126,16 @@ export class Casos {
       .all(casoId) as unknown as EventoHistorico[];
   }
 
+  /** Sinistros anteriores do mesmo motorista (histórico além da telemetria). */
+  private anteriores(id: string, motorista: string, dataHora: string): Caso['sinistrosAnteriores'] {
+    if (!motorista.trim()) return [];
+    return (
+      this.db
+        .prepare("SELECT id, data_hora, tipo, tipo_outro, nivel FROM casos WHERE motorista = ? AND id <> ? AND data_hora < ? AND etapa <> 'rascunho' ORDER BY data_hora DESC")
+        .all(motorista, id, dataHora) as Row[]
+    ).map((x) => ({ id: String(x.id), dataHora: String(x.data_hora), tipo: String(x.tipo), tipoOutro: String(x.tipo_outro ?? ''), nivel: Number(x.nivel) as Nivel }));
+  }
+
   obter(id: string): Caso {
     const r = this.rowCaso(id);
     const anexos = this.anexos(id);
@@ -137,6 +155,11 @@ export class Casos {
       tipo: String(r.tipo),
       tipoOutro: String(r.tipo_outro ?? ''),
       condicaoVia: String(r.condicao_via),
+      vinculo: String(r.vinculo ?? ''),
+      rnc: String(r.rnc ?? ''),
+      bo: String(r.bo ?? ''),
+      operacao: String(r.operacao ?? ''),
+      sinistrosAnteriores: this.anteriores(String(r.id), String(r.motorista), String(r.data_hora)),
       relato: String(r.relato),
       envolvidos: J<Envolvido[]>(r.envolvidos),
       etapa,
@@ -287,12 +310,16 @@ export class Casos {
         JSON.stringify(envolvidos),
         rascunho ? 'rascunho' : 'classificacao',
         dados ? JSON.stringify(dados) : null,
+        VINCULOS.includes(input.vinculo as (typeof VINCULOS)[number]) ? input.vinculo! : input.propriedade === 'terceiro' ? 'Terceiro' : 'Frota',
+        (input.rnc ?? '').trim(),
+        (input.bo ?? '').trim(),
+        (input.operacao ?? '').trim(),
       ] as const;
       if (atual) {
         this.db
           .prepare(
             `UPDATE casos SET placa=?, modelo=?, categoria=?, unidade=?, propriedade=?, terceiro=?, motorista=?, data_hora=?, local=?, tipo=?,
-              tipo_outro=?, condicao_via=?, relato=?, envolvidos=?, etapa=?, dados=? WHERE id=?`,
+              tipo_outro=?, condicao_via=?, relato=?, envolvidos=?, etapa=?, dados=?, vinculo=?, rnc=?, bo=?, operacao=? WHERE id=?`,
           )
           .run(...valores, id);
       } else {
@@ -300,8 +327,8 @@ export class Casos {
         this.db
           .prepare(
             `INSERT INTO casos (placa, modelo, categoria, unidade, propriedade, terceiro, motorista, data_hora, local, tipo, tipo_outro,
-              condicao_via, relato, envolvidos, etapa, dados, id, nivel, classificacao, investigacao, registrado_por, registrado_em)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+              condicao_via, relato, envolvidos, etapa, dados, vinculo, rnc, bo, operacao, id, nivel, classificacao, investigacao, registrado_por, registrado_em)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
           )
           .run(...valores, id, 0, JSON.stringify(classificacao), JSON.stringify(EMPTY_INVESTIGACAO), autor(u) + ' · ' + u.setor, quando);
       }
@@ -316,12 +343,12 @@ export class Casos {
     });
   }
 
-  editarIdentificacao(id: string, patch: Partial<Pick<Caso, 'motorista' | 'local' | 'tipo' | 'tipoOutro' | 'condicaoVia' | 'dataHora' | 'relato'>>, motivo: string, u: Usuario): Caso {
+  editarIdentificacao(id: string, patch: Partial<Pick<Caso, 'motorista' | 'local' | 'tipo' | 'tipoOutro' | 'condicaoVia' | 'dataHora' | 'relato' | 'vinculo' | 'rnc' | 'bo' | 'operacao'>>, motivo: string, u: Usuario): Caso {
     const r = this.rowCaso(id);
     this.exigirEtapa(r, 'classificacao', 'investigacao', 'acompanhamento');
     if (!motivo?.trim()) throw new HttpError(422, 'Informe o motivo da alteração');
-    const cols = { motorista: 'motorista', local: 'local', tipo: 'tipo', tipoOutro: 'tipo_outro', condicaoVia: 'condicao_via', dataHora: 'data_hora', relato: 'relato' } as const;
-    const labels = { motorista: 'Motorista', local: 'Local', tipo: 'Tipo', tipoOutro: 'Descrição do tipo', condicaoVia: 'Condição da via', dataHora: 'Data e hora', relato: 'Relato' } as const;
+    const cols = { motorista: 'motorista', local: 'local', tipo: 'tipo', tipoOutro: 'tipo_outro', condicaoVia: 'condicao_via', dataHora: 'data_hora', relato: 'relato', vinculo: 'vinculo', rnc: 'rnc', bo: 'bo', operacao: 'operacao' } as const;
+    const labels = { motorista: 'Motorista', local: 'Local', tipo: 'Tipo', tipoOutro: 'Descrição do tipo', condicaoVia: 'Condição da via', dataHora: 'Data e hora', relato: 'Relato', vinculo: 'Vínculo do motorista', rnc: 'Nº da RNC', bo: 'Nº do BO', operacao: 'Operação' } as const;
     return tx(this.db, () => {
       for (const [k, col] of Object.entries(cols) as [keyof typeof cols, string][]) {
         const novo = patch[k];
@@ -407,7 +434,7 @@ export class Casos {
     });
   }
 
-  salvarClassificacao(id: string, c: Pick<Classificacao, 'real' | 'pot' | 'justificativa'>, u: Usuario, confirmar = false, quando = agora()): Caso {
+  salvarClassificacao(id: string, c: Pick<Classificacao, 'real' | 'pot' | 'justificativa' | 'valorPrejuizo'>, u: Usuario, confirmar = false, quando = agora()): Caso {
     const r = this.rowCaso(id);
     this.exigirEtapa(r, 'classificacao');
     const real = normalizarDanos(c.real);
@@ -419,7 +446,9 @@ export class Casos {
     const nivel = nivelDoCaso({ real, pot });
     if (confirmar && maxNivel(pot) > maxNivel(real) && !justificativa)
       throw new HttpError(422, 'Justifique o dano potencial', ['O potencial é maior que o dano real: descreva o que poderia ter acontecido']);
-    const cls: Classificacao = { real, pot, justificativa, confirmada: confirmar };
+    const valor = c.valorPrejuizo == null || (c.valorPrejuizo as unknown) === '' ? null : Number(c.valorPrejuizo);
+    if (valor != null && (!Number.isFinite(valor) || valor < 0)) throw new HttpError(422, 'Valor estimado do prejuízo inválido');
+    const cls: Classificacao = { real, pot, justificativa, confirmada: confirmar, valorPrejuizo: valor };
 
     return tx(this.db, () => {
       if (!confirmar) {
@@ -605,6 +634,10 @@ export interface RegistroInput {
   condicaoVia?: string;
   relato?: string;
   envolvidos?: Envolvido[];
+  vinculo?: string;
+  rnc?: string;
+  bo?: string;
+  operacao?: string;
 }
 
 const RE_DATAHORA = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
@@ -670,7 +703,39 @@ function sanitizarInvestigacao(inv: Partial<Investigacao>): Partial<Investigacao
   if (ev !== undefined) out.evitabilidade = ev;
   const rs = opt(inv.responsabilidade, RESPONSABILIDADES, 'Responsabilidade');
   if (rs !== undefined) out.responsabilidade = rs;
+  if (inv.detalhes !== undefined) out.detalhes = sanitizarDetalhes(inv.detalhes);
   return out;
+}
+
+const txt = (v: unknown, max = 2000) => String(v ?? '').slice(0, max);
+const lista = (v: unknown, permitidos: readonly string[]) => (Array.isArray(v) ? [...new Set(v.map(String).filter((x) => permitidos.includes(x)))] : []);
+const umDe = (v: unknown, permitidos: readonly string[]) => (permitidos.includes(String(v)) ? String(v) : '');
+const data = (v: unknown) => (RE_DATA.test(String(v ?? '')) ? String(v) : '');
+
+function sanitizarDetalhes(d: Partial<DetalhesInvestigacao>): DetalhesInvestigacao {
+  const c = { ...EMPTY_DETALHES.condutor, ...d.condutor };
+  const v = { ...EMPTY_DETALHES.via, ...d.via };
+  return {
+    jornadaObs: txt(d.jornadaObs, 5000),
+    condutor: {
+      condicaoFisica: lista(c.condicaoFisica, CONDICOES_FISICAS),
+      condicaoObs: txt(c.condicaoObs),
+      historico: lista(c.historico, HISTORICO_ITENS),
+      historicoObs: txt(c.historicoObs),
+      cnh: txt(c.cnh, 30),
+      validadeCnh: data(c.validadeCnh),
+      validadeToxicologico: data(c.validadeToxicologico),
+    },
+    via: {
+      pista: lista(v.pista, PISTA_CONDICOES),
+      pavimentacao: umDe(v.pavimentacao, QUALIDADES),
+      sinalizacao: umDe(v.sinalizacao, QUALIDADES),
+      contexto: lista(v.contexto, CONTEXTOS_VIA),
+      rodovia: txt(v.rodovia, 120),
+      concessionaria: txt(v.concessionaria, 120),
+      faixas: txt(v.faixas, 10),
+    },
+  };
 }
 
 function mapAnexo(r: Row): Anexo {
