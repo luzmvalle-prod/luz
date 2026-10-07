@@ -1,10 +1,9 @@
 // Dados de exemplo: os cinco casos do protótipo, um em cada etapa, com histórico.
-import type { DatabaseSync } from 'node:sqlite';
 import type { Usuario } from '../shared/domain.ts';
-import { Casos, type ArquivoRecebido } from './casos.ts';
+import { Casos, type ArquivoRecebido, type Arquivos } from './casos.ts';
 import { FROTA } from './plataforma.ts';
 import { pdfSimples } from './pdf.ts';
-import { tx } from './db.ts';
+import { tx, type Db } from './schema.ts';
 
 export const USUARIOS: Usuario[] = [
   { id: 'ana', nome: 'Ana Souza', setor: 'Monitoramento' },
@@ -18,7 +17,7 @@ const arq = (nome: string, titulo: string, linhas: string[]): ArquivoRecebido =>
   return { originalname: nome, size: buffer.length, mimetype: 'application/pdf', buffer };
 };
 
-export function seed(db: DatabaseSync) {
+export function seed(db: Db, arquivos: Arquivos) {
   const n = (db.prepare('SELECT COUNT(*) AS n FROM casos').get() as { n: number }).n;
   if (Number(n) > 0) return false;
 
@@ -29,7 +28,7 @@ export function seed(db: DatabaseSync) {
     for (const x of FROTA) v.run(x.placa, x.modelo, x.categoria, x.unidade, x.motorista);
   });
 
-  const svc = new Casos(db);
+  const svc = new Casos(db, arquivos);
   const [ana, fernanda, rafaela, diego] = USUARIOS;
   const acao = (casoId: string, i: number) => svc.obter(casoId).acoes[i].id;
 

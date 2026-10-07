@@ -2,12 +2,13 @@ import path from 'node:path';
 import { criarApp } from './app.ts';
 import { DB_FILE, openDb } from './db.ts';
 import { seed } from './seed.ts';
+import { arquivosEmDisco } from './arquivos-disco.ts';
 
 const PORT = Number(process.env.API_PORT ?? process.env.PORT ?? 3789);
 const prod = process.argv.includes('--prod') || process.env.NODE_ENV === 'production';
 
 const db = openDb();
-if (seed(db)) console.log('[api] banco criado com os casos de exemplo');
+if (seed(db, arquivosEmDisco)) console.log('[api] banco criado com os casos de exemplo');
 
 const app = criarApp(db, { estatico: prod ? path.resolve(import.meta.dirname, '..', 'dist') : undefined });
 const server = app.listen(PORT, () => {

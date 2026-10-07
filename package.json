@@ -17,7 +17,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test server/*.test.ts",
     "predev": "node scripts/check-node.mjs",
-    "prestart": "node scripts/check-node.mjs"
+    "prestart": "node scripts/check-node.mjs",
+    "build:demo": "vite build --mode demo && node scripts/artifact-demo.mjs"
   },
   "dependencies": {
     "express": "^4.22.3",
@@ -32,10 +33,13 @@
     "@types/node": "^22.20.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/sql.js": "^1.4.11",
     "@vitejs/plugin-react": "^6.1.1",
     "concurrently": "^10.0.5",
+    "sql.js": "^1.14.2",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
-    "vite": "^8.3.1"
+    "vite": "^8.3.1",
+    "vite-plugin-singlefile": "^2.3.3"
   }
 }

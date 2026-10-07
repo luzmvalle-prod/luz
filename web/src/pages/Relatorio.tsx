@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { DIMENSOES, ETAPA_LABEL, NIVEIS, STATUS_ACAO_LABEL, avaliarJornada, eventoCorrigido, origemDoNivel, tipoLabel } from '../../../shared/domain.ts';
 import { useCaso } from '../components/caso.tsx';
 import { Loading } from '../components/ui.tsx';
+import { DEMO } from '../demo/flag.ts';
+import logo from '../infleet-logo.png';
 import { ContextoResumo } from '../components/contexto.tsx';
 import { fmtData, fmtDataHora, fmtDuracao } from '../format.ts';
 
@@ -23,13 +25,17 @@ export function Relatorio() {
     <>
       <div className="report-toolbar no-print">
         <Link to={`/sinistros/${c.id}/ficha`}>← Voltar para a ficha</Link>
-        <button className="btn" onClick={() => window.print()}>
-          Imprimir ou salvar PDF
-        </button>
+        {DEMO ? (
+          <span className="hint">Na demonstração, a impressão fica desativada. No sistema, este relatório vira PDF.</span>
+        ) : (
+          <button className="btn" onClick={() => window.print()}>
+            Imprimir ou salvar PDF
+          </button>
+        )}
       </div>
       <article className="report">
         <header className="stack" style={{ gap: 6 }}>
-          <img src="/infleet-logo.png" alt="INFLEET" style={{ height: 22, width: 'auto', alignSelf: 'flex-start' }} />
+          <img src={logo} alt="INFLEET" style={{ height: 22, width: 'auto', alignSelf: 'flex-start' }} />
           <h1>
             Relatório do sinistro {c.id} · {NIVEIS[c.nivel]}
           </h1>

@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { DEMO } from './demo/flag.ts';
 import './styles.css';
 import { ToastProvider, UserProvider } from './components/ui.tsx';
 import { Lista } from './pages/Lista.tsx';
@@ -17,9 +18,13 @@ function AbrirCaso() {
   return <Navigate to={`/sinistros/${id}/ficha`} replace />;
 }
 
+// A demonstração é um único arquivo sem servidor: navega pelo #.
+const Router = DEMO ? HashRouter : BrowserRouter;
+if (DEMO) document.documentElement.classList.add('demo');
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter>
+    <Router>
       <UserProvider>
         <ToastProvider>
           <Routes>
@@ -38,6 +43,6 @@ createRoot(document.getElementById('root')!).render(
           </Routes>
         </ToastProvider>
       </UserProvider>
-    </BrowserRouter>
+    </Router>
   </StrictMode>,
 );

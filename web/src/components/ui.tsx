@@ -1,7 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { ETAPAS_STEPPER, NIVEIS, NIVEL_COR, type Anexo, type Nivel, type Usuario } from '../../../shared/domain.ts';
-import { api, getUsuarioId, setUsuarioId, urlAnexo } from '../api.ts';
+import { api, getUsuarioId, reiniciarDemo, setUsuarioId, urlAnexo } from '../api.ts';
+import { DEMO } from '../demo/flag.ts';
+import logo from '../infleet-logo.png';
 import { fmtBytes, fmtDataHora } from '../format.ts';
 
 // ---------------------------------------------------------------- toast
@@ -79,7 +81,7 @@ export function Sidebar() {
   return (
     <nav className="sidebar no-print" aria-label="Navegação principal">
       <div className="logo">
-        <img src="/infleet-logo.png" alt="INFLEET" />
+        <img src={logo} alt="INFLEET" />
       </div>
       {NAV.map((n) => (
         <button key={n.label} className="nav-item" onClick={fora}>
@@ -128,9 +130,39 @@ export function Sidebar() {
   );
 }
 
+function FaixaDemo() {
+  const [confirmar, setConfirmar] = useState(false);
+  return (
+    <div className="faixa-demo no-print" role="note">
+      <span>
+        <strong>Demonstração</strong> com dados simulados. O que você registra fica só neste navegador.
+      </span>
+      {confirmar ? (
+        <span className="actions">
+          Apagar o que foi feito e voltar aos casos de exemplo?
+          <button className="btn sm" onClick={() => reiniciarDemo?.().then(() => {
+              window.location.hash = '#/sinistros';
+              window.location.reload();
+            })}>
+            Reiniciar
+          </button>
+          <button className="btn outline sm" onClick={() => setConfirmar(false)}>
+            Cancelar
+          </button>
+        </span>
+      ) : (
+        <button className="btn outline sm" onClick={() => setConfirmar(true)}>
+          Reiniciar demonstração
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="shell">
+      {DEMO && <FaixaDemo />}
       <Sidebar />
       <main className="main">{children}</main>
     </div>

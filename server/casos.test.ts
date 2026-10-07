@@ -8,12 +8,13 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'sinistros-test-'))
 const { openDb } = await import('./db.ts');
 const { Casos, HttpError } = await import('./casos.ts');
 const { seed, USUARIOS } = await import('./seed.ts');
+const { arquivosEmDisco } = await import('./arquivos-disco.ts');
 const { nivelDoCaso, avaliarJornada, EMPTY_DANOS } = await import('../shared/domain.ts');
 
 function novo() {
   const db = openDb(':memory:');
-  seed(db);
-  return new Casos(db);
+  seed(db, arquivosEmDisco);
+  return new Casos(db, arquivosEmDisco);
 }
 const [ana, fernanda] = USUARIOS;
 const arquivo = { originalname: 'evidencia.pdf', size: 3, mimetype: 'application/pdf', buffer: Buffer.from('pdf') };

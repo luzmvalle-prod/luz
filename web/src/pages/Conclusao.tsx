@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { NIVEIS, origemDoNivel, type Caso } from '../../../shared/domain.ts';
 import { api, urlAnexo } from '../api.ts';
+import { DEMO } from '../demo/flag.ts';
 import { CasoGate, CasoHeader, useCaso, useMutacao } from '../components/caso.tsx';
 import { Card, Field, IconDownload, Modal, useToast } from '../components/ui.tsx';
 import { diasEntre, fmtData, fmtDataHora, nomeArquivoDownload, rotaDaEtapa } from '../format.ts';
@@ -45,7 +46,7 @@ export function ReabrirModal({ caso, onClose, onDone }: { caso: Caso; onClose: (
 export function exportarCAT(caso: Caso, toast: ReturnType<typeof useToast>) {
   api
     .cat(caso.id)
-    .then((d) => nomeArquivoDownload(`cat-${caso.id}.json`, d))
+    .then((d) => (DEMO ? toast('Na demonstração, o download fica desativado. No sistema, os dados da CAT são baixados em arquivo.') : nomeArquivoDownload(`cat-${caso.id}.json`, d)))
     .catch((e) => toast(e.message, 'erro'));
 }
 

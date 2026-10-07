@@ -241,3 +241,9 @@ details.bloco > summary .hint { font-weight: 400; }
 .resumo-tel > div { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .resumo-tel .k { font-size: 11px; color: var(--muted); }
 .resumo-tel strong { font-size: 16px; }
+
+/* Demonstração (build de arquivo único) */
+.faixa-demo { position: fixed; left: 264px; right: 0; bottom: 0; z-index: 40; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 10px 32px calc(10px + env(safe-area-inset-bottom, 0px)); background: var(--warn-soft); border-top: 1px solid #f3dc9a; font-size: 13px; }
+.demo #root { overflow-x: auto; }
+.demo .footer-bar { bottom: 52px; }
+.demo .main { padding-bottom: 52px; }

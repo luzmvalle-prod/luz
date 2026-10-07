@@ -1,7 +1,3 @@
-import type { DatabaseSync } from 'node:sqlite';
-import { randomUUID } from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
 import {
   CERTEZAS,
   DIMENSOES,
@@ -51,7 +47,8 @@ import {
   type StatusAcao,
   type Usuario,
 } from '../shared/domain.ts';
-import { UPLOAD_DIR, agora, hoje, tx } from './db.ts';
+import { tx, type Db } from './schema.ts';
+import { agora, hoje } from './tempo.ts';
 import { coletarDados, consultarPosicao, veiculo } from './plataforma.ts';
 
 export class HttpError extends Error {
@@ -74,11 +71,21 @@ export interface ArquivoRecebido {
   size: number;
   mimetype: string;
   path?: string;
-  buffer?: Buffer;
+  buffer?: Uint8Array;
 }
 
+/** Onde os arquivos dos anexos ficam guardados (disco no servidor, memória na demonstração). */
+export interface Arquivos {
+  salvar(arquivo: string, f: ArquivoRecebido): void;
+}
+
+const randomUUID = () => globalThis.crypto.randomUUID();
+
 export class Casos {
-  constructor(private db: DatabaseSync) {}
+  constructor(
+    private db: Db,
+    private arquivos: Arquivos,
+  ) {}
 
   // ---------------------------------------------------------------- leitura
 
@@ -230,10 +237,10 @@ export class Casos {
     };
   }
 
-  arquivoDoAnexo(id: string): { anexo: Anexo; caminho: string } {
+  arquivoDoAnexo(id: string): { anexo: Anexo; arquivo: string } {
     const r = this.db.prepare('SELECT * FROM anexos WHERE id = ?').get(id) as Row | undefined;
     if (!r) throw new HttpError(404, 'Anexo não encontrado');
-    return { anexo: mapAnexo(r), caminho: path.join(UPLOAD_DIR, String(r.arquivo)) };
+    return { anexo: mapAnexo(r), arquivo: String(r.arquivo) };
   }
 
   // ---------------------------------------------------------------- escrita
@@ -257,10 +264,9 @@ export class Casos {
 
   salvarArquivo(casoId: string, contexto: Anexo['contexto'], f: ArquivoRecebido, u: Usuario, acaoId: string | null = null, data = agora()): Anexo {
     const id = randomUUID();
-    const arquivo = `${id}${path.extname(f.originalname).slice(0, 12)}`;
-    const destino = path.join(UPLOAD_DIR, arquivo);
-    if (f.path) fs.renameSync(f.path, destino);
-    else fs.writeFileSync(destino, f.buffer ?? Buffer.alloc(0));
+    const ext = /\.[A-Za-z0-9]{1,10}$/.exec(f.originalname)?.[0] ?? '';
+    const arquivo = `${id}${ext}`;
+    this.arquivos.salvar(arquivo, f);
     this.db
       .prepare('INSERT INTO anexos (id, caso_id, acao_id, contexto, nome, tamanho, mime, arquivo, enviado_por, enviado_em) VALUES (?,?,?,?,?,?,?,?,?,?)')
       .run(id, casoId, acaoId, contexto, f.originalname, f.size, f.mimetype || 'application/octet-stream', arquivo, autor(u), data);

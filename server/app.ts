@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 import type { DatabaseSync } from 'node:sqlite';
+import { arquivosEmDisco, caminhoDoArquivo } from './arquivos-disco.ts';
 import { TIPOS_SINISTRO } from '../shared/domain.ts';
 import { Casos, HttpError, type RegistroInput } from './casos.ts';
 import { FROTA, consultarPosicao } from './plataforma.ts';
@@ -11,7 +12,7 @@ import { FROTA, consultarPosicao } from './plataforma.ts';
 const MAX_MB = 25;
 
 export function criarApp(db: DatabaseSync, opts: { estatico?: string } = {}) {
-  const svc = new Casos(db);
+  const svc = new Casos(db, arquivosEmDisco);
   const app = express();
   const upload = multer({ dest: path.join(os.tmpdir(), 'sinistros-upload'), limits: { fileSize: MAX_MB * 1024 * 1024, files: 20 } });
 
@@ -80,7 +81,8 @@ export function criarApp(db: DatabaseSync, opts: { estatico?: string } = {}) {
   });
 
   r.get('/anexos/:id', (q, s) => {
-    const { anexo, caminho } = svc.arquivoDoAnexo(q.params.id);
+    const { anexo, arquivo } = svc.arquivoDoAnexo(q.params.id);
+    const caminho = caminhoDoArquivo(arquivo);
     if (!fs.existsSync(caminho)) throw new HttpError(404, 'Arquivo não encontrado no disco');
     s.setHeader('Content-Type', anexo.mime);
     s.setHeader('Content-Disposition', `${q.query.download ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(anexo.nome)}`);

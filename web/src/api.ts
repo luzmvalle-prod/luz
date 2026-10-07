@@ -87,4 +87,7 @@ export const api = {
   cat: (id: string) => req<object>('GET', `/casos/${id}/cat`),
 };
 
+/** Só existe na demonstração (web/src/demo/api-demo.ts). */
+export const reiniciarDemo: (() => Promise<void>) | undefined = undefined;
+
 export const urlAnexo = (id: string, download = false) => `/api/anexos/${id}${download ? '?download=1' : ''}`;
